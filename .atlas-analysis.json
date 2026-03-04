@@ -1,0 +1,178 @@
+{
+  "projectType": "general",
+  "projectName": "SerenityOS",
+  "projectDescription": "A graphical Unix-like operating system for 64-bit x86, Arm, and RISC-V computers.",
+  "theme": "aspen",
+  "primaryColor": "#cd2213",
+  "lightColor": "#6c1e18",
+  "darkColor": "#161111",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "faq"
+            ]
+          },
+          {
+            "group": "Building & Running",
+            "pages": [
+              "building/overview",
+              "building/linux",
+              "building/macos",
+              "building/windows",
+              "building/advanced",
+              "building/ladybird"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/kernel",
+              "architecture/userland",
+              "architecture/libraries",
+              "architecture/ipc"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/contributing",
+              "development/coding-style",
+              "development/patterns",
+              "development/smart-pointers",
+              "development/testing"
+            ]
+          },
+          {
+            "group": "System Features",
+            "pages": [
+              "features/applications",
+              "features/services",
+              "features/browser",
+              "features/networking",
+              "features/filesystem"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Kernel",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "kernel/introduction",
+              "kernel/architecture"
+            ]
+          },
+          {
+            "group": "Core Systems",
+            "pages": [
+              "kernel/memory-management",
+              "kernel/process-scheduling",
+              "kernel/interrupts",
+              "kernel/syscalls"
+            ]
+          },
+          {
+            "group": "Subsystems",
+            "pages": [
+              "kernel/filesystem",
+              "kernel/networking",
+              "kernel/graphics",
+              "kernel/devices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Tools",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "tools/ide-setup",
+              "tools/vscode",
+              "tools/clion",
+              "tools/vim-emacs"
+            ]
+          },
+          {
+            "group": "Debugging & Profiling",
+            "pages": [
+              "tools/debugging",
+              "tools/profiling",
+              "tools/troubleshooting"
+            ]
+          },
+          {
+            "group": "Virtualization",
+            "pages": [
+              "tools/qemu",
+              "tools/virtualbox",
+              "tools/vmware",
+              "tools/bare-metal"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Libraries",
+            "pages": [
+              "api/ak",
+              "api/libc",
+              "api/libcore",
+              "api/libgui"
+            ]
+          },
+          {
+            "group": "System Libraries",
+            "pages": [
+              "api/libgl",
+              "api/libaudio",
+              "api/libgfx",
+              "api/libweb"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Modern 64-bit kernel with pre-emptive multi-threading",
+    "Custom browser with JavaScript, WebAssembly, and modern web standards",
+    "Complete desktop environment with window server and GUI applications",
+    "POSIX compatibility with custom LibC implementation",
+    "Security features including pledge, unveil, KASLR, and W^X memory",
+    "Native development tools including IDE, debugger, and profiler",
+    "Built-in applications for productivity, media, and gaming",
+    "Network stack with IPv4, TCP/UDP, HTTP, and more",
+    "Over 300 ported open-source applications"
+  ],
+  "publicApiSurface": [
+    "AK - Custom C++ standard library",
+    "LibC - POSIX C library implementation",
+    "LibCore - Core system utilities and event loop",
+    "LibGUI - GUI toolkit and widgets",
+    "LibGfx - Graphics primitives and rendering",
+    "LibGL - OpenGL implementation",
+    "LibWeb - Web engine (HTML, CSS, JavaScript)",
+    "LibJS - JavaScript engine",
+    "LibAudio - Audio playback and encoding",
+    "LibProtocol - Network protocol implementations",
+    "LibIPC - Inter-process communication",
+    "Kernel syscalls - System call interface",
+    "WindowServer - Window management IPC",
+    "AudioServer - Audio service IPC"
+  ]
+}
