@@ -1,0 +1,189 @@
+---
+title: Bare Metal Installation
+description: Install SerenityOS on physical x86-64 hardware
+---
+
+<Warning>
+While it is possible to run Serenity on physical x86-64-compatible hardware, it is not yet ready to be used by non-technical users who aren't prepared to report bugs or assist with its development. There are currently no pre-built install images, so bare-metal installation requires building from source.
+</Warning>
+
+## Hardware Requirements
+
+### Minimum Requirements
+
+- **CPU**: x86-64 compatible processor
+- **RAM**: 256 MB minimum
+- **Storage**: 2 GB or larger SATA, NVMe, or USB drive
+
+### Supported Hardware
+
+#### Storage Controllers
+- SATA controllers
+- NVMe controllers
+- USB storage (xHCI and UHCI host controllers only)
+
+#### Network Cards
+- Intel e1000 (tested with QEMU and VirtualBox; may work with 82545XX, 82540XX, 82546XX chipsets)
+- Intel e1000e
+- Realtek 8168
+
+#### Sound Cards
+- Intel AC'97
+- Intel HDA PCI devices
+
+#### Graphics
+- No real GPU support currently
+- Relies on multiboot or EFI GOP framebuffer
+- No OpenGL or Vulkan support
+- No accelerated video playback/encoding
+- No WiFi support
+
+<Info>
+You must be willing to wipe your disk's contents to write the Serenity image. Back up any important data first!
+</Info>
+
+## Creating a Serenity GRUB Disk Image
+
+<Steps>
+  <Step title="Build SerenityOS from source">
+    Follow the [build instructions](/building/overview) to build the OS. Run up to and including:
+    
+    ```bash
+    Meta/serenity.sh image <arch>
+    ```
+  </Step>
+  
+  <Step title="Build the GRUB disk image">
+    After the OS has built, create the bootable image:
+    
+    **For UEFI systems:**
+    ```bash
+    cd Build/<arch>
+    ninja grub-uefi-image
+    ```
+    
+    **For legacy BIOS systems:**
+    ```bash
+    cd Build/<arch>
+    ninja grub-image
+    ```
+    
+    This creates `grub_uefi_disk_image` or `grub_disk_image` with GRUB2 installed.
+  </Step>
+</Steps>
+
+<Note>
+Building the GRUB image requires `parted` and `grub2` (on Arch: `grub`) to be installed on your system.
+</Note>
+
+## Writing the Image to Physical Media
+
+<Warning>
+The following command will **completely erase** the target device. Double-check the device path before proceeding!
+</Warning>
+
+### Using dd (Linux/Unix)
+
+```bash
+sudo dd if=grub_uefi_disk_image of=/dev/sdx bs=64M && sync
+```
+
+Replace `/dev/sdx` with your target device (e.g., `/dev/sdb`).
+
+<Info>
+The `bs=64M` argument is optional but speeds up the data transfer.
+</Info>
+
+### Using WSL (Windows Subsystem for Linux)
+
+You can find WSL files in Windows Explorer under:
+
+```
+\\wsl$\<distro name>\<path to serenity directory>
+```
+
+Use any image flashing application like Rufus or balenaEtcher to write the image.
+
+## Boot Parameters
+
+### Root Partition
+
+If using the BIOS disk image, you may need to adjust the `root=` boot parameter in the GRUB boot menu to refer to the correct partition.
+
+See the [boot device addressing documentation](https://github.com/SerenityOS/serenity/blob/master/Base/usr/share/man/man7/boot_device_addressing.md) for more details.
+
+### NVMe Drives
+
+If you installed Serenity to an NVMe drive and it fails to initialize, try adding the `nvme_poll` boot parameter.
+
+### Console-Only Mode
+
+To boot into console-only mode (useful if graphics initialization fails):
+
+```
+graphics_subsystem_mode=limited
+```
+
+This forces the kernel to not initialize any framebuffer devices, and `SystemServer` will detect this condition and skip starting `WindowServer`.
+
+## Multiboot Support
+
+Serenity uses the GRUB2 bootloader, so it should be possible to multiboot it with any other OS that can be booted from GRUB2 post-installation.
+
+## Troubleshooting Boot Issues
+
+### With Serial Cable (Recommended)
+
+Many troubleshooting guides recommend using `screen` for serial console monitoring, but `cu` is easier for copying output.
+
+<Steps>
+  <Step title="Install cu">
+    ```bash
+    sudo apt install cu
+    ```
+  </Step>
+  
+  <Step title="Add user to dialout group">
+    ```bash
+    sudo usermod -aG dialout YourLinuxUserName
+    ```
+    
+    <Warning>You must log out and log back in after running this command.</Warning>
+  </Step>
+  
+  <Step title="Connect to serial console">
+    ```bash
+    cu -s 57600 -l /dev/ttyUSB0
+    ```
+  </Step>
+</Steps>
+
+### Without Serial Port
+
+During the boot process, important kernel messages are printed to the screen. If the system hangs, the last message visible may indicate an assertion or kernel panic.
+
+#### PC Speaker Debugging
+
+If no output is visible, the Kernel may panic before video initialization. Try debugging the init sequence with the PC speaker to identify where it gets stuck.
+
+#### Boot into Console Mode
+
+Force console-only boot if graphics initialization is problematic:
+
+```
+graphics_subsystem_mode=limited
+```
+
+This prevents framebuffer device initialization, and `SystemServer` will skip `WindowServer` startup.
+
+## Post-Installation
+
+Once Serenity boots successfully on your hardware:
+
+1. Test all hardware components
+2. Report any issues on the [SerenityOS GitHub](https://github.com/SerenityOS/serenity/issues)
+3. Help improve hardware compatibility by contributing fixes
+
+<Note>
+Serenity is under active development. Hardware support is continually improving, but not all features work on all systems yet.
+</Note>

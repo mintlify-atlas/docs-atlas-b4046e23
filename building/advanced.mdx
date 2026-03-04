@@ -1,0 +1,465 @@
+---
+title: Advanced Build Options
+description: CMake options, sanitizers, component configuration, and build customization
+---
+
+## Customizing the Disk Image
+
+You can modify the disk image filesystem by creating a `sync-local.sh` script in the project root:
+
+```bash sync-local.sh
+#!/bin/sh
+
+set -e
+
+# Change keyboard layout to German
+cat << 'EOF' > mnt/etc/Keyboard.ini
+[Mapping]
+Keymaps=de
+EOF
+
+# Add a file to anon's home directory
+cp /somewhere/on/your/system/file.txt mnt/home/anon
+```
+
+This script runs during image creation and can modify files in the `mnt/` directory.
+
+<Info>
+See `Base/res/keymaps/` for available keyboard layouts.
+</Info>
+
+## CMake Build Options
+
+CMake options can be configured using:
+
+<Tabs>
+  <Tab title="Command Line">
+    ```bash
+    cmake -B Build/x86_64 -DOPTION_NAME=Value
+    ```
+  </Tab>
+
+  <Tab title="ccmake (TUI)">
+    ```bash
+    ccmake Build/x86_64
+    ```
+  </Tab>
+
+  <Tab title="cmake-gui">
+    ```bash
+    cmake-gui Build/x86_64
+    ```
+  </Tab>
+</Tabs>
+
+### Development Options
+
+<AccordionGroup>
+  <Accordion title="Sanitizers">
+    Runtime checks for memory corruption, undefined behavior, and other bugs:
+
+    - `ENABLE_ADDRESS_SANITIZER` - Memory corruption checks (Lagom tests)
+    - `ENABLE_KERNEL_ADDRESS_SANITIZER` - Memory corruption checks (kernel)
+    - `ENABLE_KERNEL_UNDEFINED_SANITIZER` - Undefined behavior checks (kernel)
+    - `ENABLE_KERNEL_UNDEFINED_SANITIZER_ALWAYS_DEADLY` - Make UB checks fatal
+    - `ENABLE_MEMORY_SANITIZER` - Uninitialized memory checks (Lagom)
+    - `ENABLE_UNDEFINED_SANITIZER` - Undefined behavior checks (userland)
+    - `UNDEFINED_BEHAVIOR_IS_FATAL` - Make UB sanitizer errors non-recoverable
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DENABLE_ADDRESS_SANITIZER=ON
+    ```
+  </Accordion>
+
+  <Accordion title="Coverage & Fuzzing">
+    - `ENABLE_KERNEL_COVERAGE_COLLECTION` - KCOV API for kernel fuzzing
+    - `ENABLE_USERSPACE_COVERAGE_COLLECTION` - Coverage for userspace (Clang only)
+    - `ENABLE_FUZZERS` - Build fuzzers
+    - `ENABLE_FUZZERS_LIBFUZZER` - Clang libFuzzer-based fuzzers
+    - `ENABLE_FUZZERS_OSSFUZZ` - OSS-Fuzz compatible fuzzers
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DENABLE_FUZZERS_LIBFUZZER=ON
+    ```
+  </Accordion>
+
+  <Accordion title="Debug Symbols">
+    - `ENABLE_EXTRA_KERNEL_DEBUG_SYMBOLS` - Build kernel with `-Og -ggdb3`
+    - `ENABLE_ALL_DEBUG_FACILITIES` - Enable all debug macros + symbols (CI only)
+    - `ENABLE_ALL_THE_DEBUG_MACROS` - Enable all debug macros (CI only)
+
+    <Warning>
+    Don't use `ENABLE_ALL_THE_DEBUG_MACROS` normally - it clutters output and makes the system very slow.
+    </Warning>
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DENABLE_EXTRA_KERNEL_DEBUG_SYMBOLS=ON
+    ```
+  </Accordion>
+
+  <Accordion title="Compile-Time Checks">
+    - `ENABLE_COMPILETIME_FORMAT_CHECK` - Validate `std::format` strings (default: ON)
+    - `ENABLE_PCI_IDS_DOWNLOAD` - Download PCI device database (default: ON)
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DENABLE_COMPILETIME_FORMAT_CHECK=OFF
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Build Configuration
+
+<AccordionGroup>
+  <Accordion title="Toolchain & Architecture">
+    - `SERENITY_TOOLCHAIN` - `GNU` or `Clang`
+    - `SERENITY_ARCH` - `x86_64`, `aarch64`, or `riscv64`
+    - `ENABLE_KERNEL_LTO` - Build kernel with link-time optimization
+    - `ENABLE_MOLD_LINKER` - Use mold linker (build with `Toolchain/BuildMold.sh`)
+
+    Example:
+    ```bash
+    SERENITY_ARCH=aarch64 Meta/serenity.sh run
+    # Or directly:
+    cmake -B Build/x86_64 -DSERENITY_ARCH=x86_64 -DSERENITY_TOOLCHAIN=Clang
+    ```
+  </Accordion>
+
+  <Accordion title="Component Selection">
+    - `BUILD_<COMPONENT>` - Enable/disable specific components (e.g., `BUILD_HEARTS`)
+    - `BUILD_EVERYTHING` - Build all optional components
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DBUILD_HEARTS=OFF -DBUILD_BROWSER=ON
+    ```
+
+    <Note>
+    See [Component Configuration](#component-configuration) for an interactive tool.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Language & Testing">
+    - `ENABLE_JAKT` - Build Jakt compiler and Jakt applications
+    - `JAKT_SOURCE_DIR` - Path to local Jakt checkout for development
+    - `INCLUDE_WASM_SPEC_TESTS` - Include WebAssembly spec tests (requires `prettier` and `wabt` 1.0.35+)
+    - `INCLUDE_FLAC_SPEC_TESTS` - Include FLAC test suite
+
+    Example:
+    ```bash
+    cmake -B Build/lagom -DENABLE_JAKT=ON -DJAKT_SOURCE_DIR=/home/me/jakt
+    ```
+  </Accordion>
+
+  <Accordion title="Lagom & Graphics">
+    - `BUILD_LAGOM` - Build Lagom (host libraries and tools)
+    - `ENABLE_ACCELERATED_GRAPHICS` - Use accelerated graphics APIs
+    - `ENABLE_COMPILER_EXPLORER_BUILD` - Skip non-library entities (Lagom only)
+
+    Example:
+    ```bash
+    cmake -S Meta/Lagom -B Build/lagom -DBUILD_LAGOM=ON
+    ```
+  </Accordion>
+
+  <Accordion title="Cache & Network">
+    - `SERENITY_CACHE_DIR` - Location for downloaded files cache
+    - `ENABLE_NETWORK_DOWNLOADS` - Allow downloads during build (default: ON)
+
+    Example:
+    ```bash
+    cmake -B Build/x86_64 -DSERENITY_CACHE_DIR=/path/to/cache
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Debug Macros
+
+Enable debug output for specific components:
+
+```bash
+# Enable process debug output
+cmake -B Build/x86_64 -DPROCESS_DEBUG=ON
+
+# Enable multiple debug macros
+cmake -B Build/x86_64 -DPROCESS_DEBUG=ON -DSCHEDULER_DEBUG=ON
+```
+
+<Info>
+See `Meta/CMake/all_the_debug_macros.cmake` for a complete list of available debug macros.
+</Info>
+
+## Component Configuration
+
+Use the interactive `ConfigureComponents` tool to select which components to build:
+
+<Steps>
+  <Step title="Install whiptail">
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install whiptail
+    
+    # Arch
+    sudo pacman -S libnewt
+    ```
+  </Step>
+
+  <Step title="Run configuration tool">
+    ```bash
+    cd Build/x86_64
+    ninja configure-components
+    ```
+
+    This will:
+    - Prompt for build type selection
+    - Allow customization of components
+    - Run CMake with selected options
+    - Clean old build artifacts
+  </Step>
+</Steps>
+
+## Ninja Build Targets
+
+Special targets available in `Build/<architecture>/`:
+
+<CodeGroup>
+```bash Bootloader images
+# Limine bootloader (x86-64)
+ninja limine-image
+
+# GRUB for BIOS
+ninja grub-image
+
+# GRUB for UEFI
+ninja grub-uefi-image
+
+# extlinux bootloader
+ninja extlinux-image
+```
+
+```bash Platform-specific
+# Raspberry Pi image (AArch64)
+ninja raspberry-pi-image
+```
+
+```bash Code quality
+# Run linters on changed files
+ninja check-style
+
+# Check shell script style
+ninja lint-shell-scripts
+```
+
+```bash Development
+# Install ports tree
+ninja install-ports
+
+# Build all generated code
+ninja all_generated
+```
+</CodeGroup>
+
+## SuperBuild Advanced Usage
+
+The SuperBuild manages two separate builds:
+
+1. **Lagom** - Host tools (in `Build/lagom`)
+2. **Serenity** - Target OS (in `Build/<arch>`)
+
+### Manual SuperBuild
+
+```bash
+# Configure SuperBuild
+cmake -GNinja -S Meta/CMake/Superbuild -B Build/superbuild-x86_64 \
+  -DSERENITY_ARCH=x86_64 -DSERENITY_TOOLCHAIN=GNU
+
+# Build everything
+cmake --build Build/superbuild-x86_64
+
+# Run SerenityOS
+ninja -C Build/x86_64 setup-and-run
+```
+
+### Modifying Child Builds
+
+<Tabs>
+  <Tab title="Serenity Build">
+    ```bash
+    # After initial SuperBuild
+    cmake -B Build/x86_64 -DPROCESS_DEBUG=ON -DBUILD_BROWSER=OFF
+    ninja -C Build/x86_64 install
+    ```
+  </Tab>
+
+  <Tab title="Lagom Build">
+    ```bash
+    # Build host tests
+    cmake -S Meta/Lagom -B Build/lagom -DBUILD_LAGOM=ON
+    ninja -C Build/lagom install
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+CMake cache variables must be set **after** the SuperBuild creates the child build directories.
+</Warning>
+
+## Clang-Based Toolchain
+
+Build SerenityOS with Clang instead of GCC:
+
+<Steps>
+  <Step title="Build Clang toolchain">
+    ```bash
+    Toolchain/BuildClang.sh
+    ```
+
+    <Warning>
+    This may slow down or temporarily lock up your system. Set `MAKEJOBS` to limit parallel tasks:
+    ```bash
+    MAKEJOBS=4 Toolchain/BuildClang.sh
+    ```
+    </Warning>
+  </Step>
+
+  <Step title="Build with Clang">
+    ```bash
+    Meta/serenity.sh run x86_64 Clang
+    # Or:
+    cmake -B Build/x86_64 -DSERENITY_TOOLCHAIN=Clang
+    ```
+  </Step>
+</Steps>
+
+### Serenity-Aware Clang Tools
+
+The Clang toolchain includes libTooling-based tools:
+
+- `clang-format`
+- `clang-tidy`
+- `clangd` (optional)
+
+These are installed to `Toolchain/Local/clang/bin/` and understand SerenityOS as a valid target.
+
+#### Building clangd
+
+```bash
+CLANG_ENABLE_CLANGD=ON Toolchain/BuildClang.sh
+```
+
+<Info>
+Point your editor to the custom clang tools and a `compile_commands.json` from a Clang build for richer error reporting.
+</Info>
+
+## Clang-Format Updates
+
+To get the latest clang-format:
+
+<Tabs>
+  <Tab title="LLVM APT (Recommended)">
+    For Debian-based distributions:
+    ```bash
+    # See https://apt.llvm.org for instructions
+    sudo apt install clang-format-19
+    ```
+  </Tab>
+
+  <Tab title="Build from Source">
+    ```bash
+    # Build SerenityOS-patched LLVM
+    Toolchain/BuildClang.sh
+    
+    # Use the built binary
+    Toolchain/Local/clang/bin/clang-format
+    ```
+
+    <Note>
+    The meta-lint-ci pre-commit hook automatically uses this binary.
+    </Note>
+  </Tab>
+
+  <Tab title="Official LLVM">
+    Follow the [LLVM documentation](https://llvm.org/docs/GettingStarted.html#compiling-the-llvm-suite-source-code)
+  </Tab>
+</Tabs>
+
+## Tests
+
+For information on running tests, see the [Running Tests](RunningTests.md) documentation.
+
+<Info>
+The documentation explains:
+- Host tests (run with Lagom)
+- Target tests (run on SerenityOS)
+- Debugging CI test failures
+</Info>
+
+## Alternative Virtualization
+
+Beyond QEMU, SerenityOS can run on:
+
+<CardGroup cols={2}>
+  <Card title="VirtualBox" icon="box">
+    See [VirtualBox Installation Guide](VirtualBox.md)
+  </Card>
+  <Card title="VMware" icon="server">
+    See [VMware Installation Guide](VMware.md)
+  </Card>
+  <Card title="Bare Metal" icon="microchip">
+    See [Physical PC Installation](BareMetalInstallation.md)
+  </Card>
+</CardGroup>
+
+## WSL2 Performance Notes
+
+<Warning>
+If using Windows QEMU with WSL2, accessing ext4 partitions requires the 9P network share at `\\wsl$\{distro-name}`.
+</Warning>
+
+For better performance, copy the disk image to a native Windows partition:
+
+```bash
+cp Build/_disk_image /mnt/c/serenity/_disk_image
+cp Build/Kernel/Kernel /mnt/c/serenity/Kernel
+```
+
+Then set `SERENITY_DISK_IMAGE` to the Windows path (e.g., `D:\serenity\_disk_image`).
+
+## Quick Reference
+
+<AccordionGroup>
+  <Accordion title="Common CMake Commands">
+    ```bash
+    # Reconfigure with option
+    cmake -B Build/x86_64 -DOPTION=Value
+    
+    # Clean build
+    ninja -C Build/x86_64 clean
+    rm -rf Build/x86_64/Root
+    
+    # Full rebuild
+    rm -rf Build/x86_64
+    Meta/serenity.sh rebuild
+    ```
+  </Accordion>
+
+  <Accordion title="Environment Variables">
+    ```bash
+    SERENITY_ARCH=aarch64      # Target architecture
+    MAKEJOBS=4                  # Parallel build jobs
+    SERENITY_CACHE_DIR=/cache   # Download cache location
+    ```
+  </Accordion>
+
+  <Accordion title="Useful Ninja Targets">
+    ```bash
+    ninja -C Build/x86_64 install          # Build and install
+    ninja -C Build/x86_64 setup-and-run    # Setup and run QEMU
+    ninja -C Build/x86_64 check-style      # Run linters
+    ninja -C Build/x86_64 all_generated    # Build generated code
+    ```
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,547 @@
+---
+title: Inter-Process Communication
+description: How SerenityOS processes communicate using LibIPC
+---
+
+SerenityOS uses a type-safe, high-level IPC (Inter-Process Communication) system called **LibIPC** for communication between processes. This system is fundamental to the microkernel-inspired architecture, enabling services and applications to interact efficiently.
+
+## IPC Overview
+
+<Info>
+**LibIPC** provides:
+- Type-safe message passing between processes
+- Automatic serialization/deserialization
+- Request-response and one-way messaging
+- File descriptor passing
+- Code generation from interface definitions
+</Info>
+
+## Architecture
+
+The IPC system consists of several components:
+
+```
+┌─────────────────────────────────────────────────┐
+│  Application or Service (Client)                │
+├─────────────────────────────────────────────────┤
+│  Generated Client Stub (ConnectionToServer)     │
+├─────────────────────────────────────────────────┤
+│  LibIPC (Encoder/Decoder)                       │
+├─────────────────────────────────────────────────┤
+│  Unix Domain Socket                             │
+├─────────────────────────────────────────────────┤
+│  LibIPC (Encoder/Decoder)                       │
+├─────────────────────────────────────────────────┤
+│  Generated Server Stub (ConnectionFromClient)   │
+├─────────────────────────────────────────────────┤
+│  Service Implementation                         │
+└─────────────────────────────────────────────────┘
+```
+
+## IPC Definition Language
+
+IPC interfaces are defined in `.ipc` files using a simple DSL:
+
+<CodeGroup>
+```ipc WindowServer Example
+endpoint WindowServer
+{
+    // Request-response: client waits for response
+    CreateWindow(Gfx::IntRect rect, String title) => (i32 window_id)
+    
+    // One-way message: no response expected
+    InvalidateRect(i32 window_id, Gfx::IntRect rect) =|
+    
+    // Method with complex types
+    SetWindowBitmap(i32 window_id, [Bitmap] bitmap) => ()
+    
+    // Get window properties
+    GetWindowRect(i32 window_id) => (Gfx::IntRect rect)
+}
+```
+
+```ipc AudioServer Example
+endpoint AudioServer
+{
+    // Start audio playback
+    StartPlayback() => (bool success)
+    
+    // Set volume (0-100)
+    SetVolume(i32 volume) =|
+    
+    // Enqueue audio samples
+    EnqueueBuffer([AudioBuffer] buffer) => (i32 buffer_id)
+    
+    // Get current playback position
+    GetPlaybackPosition() => (u64 samples)
+}
+```
+
+```ipc FileSystemAccessServer Example  
+endpoint FileSystemAccessServer
+{
+    // Request file open dialog
+    RequestFile(String window_title, String path) => (Optional<IPC::File> file)
+    
+    // Request save dialog
+    SaveFile(String title, String name, String path) => (Optional<IPC::File> file)
+}
+```
+</CodeGroup>
+
+## Message Types
+
+### Request-Response Messages
+
+Use `=>` syntax for synchronous request-response:
+
+```ipc
+GetSomething(i32 id) => (String result)
+```
+
+- Client sends request and **blocks** waiting for response
+- Server processes request and sends response
+- Return value delivered to client
+
+### One-Way Messages
+
+Use `=|` syntax for asynchronous one-way messages:
+
+```ipc
+NotifySomething(String data) =|
+```
+
+- Client sends message and continues immediately
+- Server processes message when received
+- No response sent back to client
+
+## Code Generation
+
+The IPC compiler (`Meta/Lagom/Tools/CodeGenerators/IPCCompiler/`) generates C++ code from `.ipc` files:
+
+<Tabs>
+  <Tab title="Client Stub">
+    Generated `ConnectionToServer` class:
+    
+    ```cpp
+    // Auto-generated from WindowServer.ipc
+    class ConnectionToServer : public IPC::ConnectionToServer<...> {
+    public:
+        // Synchronous call
+        IPC::Messages::WindowServer::CreateWindowResponse create_window(
+            Gfx::IntRect const& rect, String const& title)
+        {
+            return send_sync<Messages::CreateWindow>(rect, title);
+        }
+        
+        // Asynchronous call
+        void invalidate_rect(i32 window_id, Gfx::IntRect const& rect)
+        {
+            send<Messages::InvalidateRect>(window_id, rect);
+        }
+    };
+    ```
+  </Tab>
+  
+  <Tab title="Server Stub">
+    Generated `ConnectionFromClient` class:
+    
+    ```cpp
+    // Auto-generated from WindowServer.ipc
+    class ConnectionFromClient : public IPC::ConnectionFromClient<...> {
+    protected:
+        // Pure virtual - must implement in derived class
+        virtual Messages::WindowServer::CreateWindowResponse
+            create_window(Gfx::IntRect const& rect, String const& title) = 0;
+        
+        virtual void invalidate_rect(
+            i32 window_id, Gfx::IntRect const& rect) = 0;
+    };
+    ```
+  </Tab>
+  
+  <Tab title="Message Structures">
+    Generated message types:
+    
+    ```cpp
+    namespace Messages::WindowServer {
+        struct CreateWindow {
+            Gfx::IntRect rect;
+            String title;
+        };
+        
+        struct CreateWindowResponse {
+            i32 window_id;
+        };
+        
+        struct InvalidateRect {
+            i32 window_id;
+            Gfx::IntRect rect;
+        };
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Serialization
+
+LibIPC automatically serializes and deserializes messages:
+
+### Supported Types
+
+<AccordionGroup>
+  <Accordion title="Primitive Types">
+    - `bool`: Boolean
+    - `i8`, `i16`, `i32`, `i64`: Signed integers
+    - `u8`, `u16`, `u32`, `u64`: Unsigned integers
+    - `float`, `double`: Floating point
+  </Accordion>
+  
+  <Accordion title="String Types">
+    - `String`: UTF-8 string
+    - `ByteString`: Byte string
+    - `StringView`: Non-owning view (serialize as String)
+  </Accordion>
+  
+  <Accordion title="Container Types">
+    - `Vector<T>`: Dynamic array
+    - `HashMap<K, V>`: Hash map
+    - `Optional<T>`: Maybe type
+  </Accordion>
+  
+  <Accordion title="Custom Types">
+    - Any type with IPC encoding support
+    - Gfx types (IntRect, IntPoint, Color, etc.)
+    - File descriptors via `IPC::File`
+    - Bitmaps via special `[Bitmap]` syntax
+  </Accordion>
+</AccordionGroup>
+
+### Custom Type Encoding
+
+To make a custom type IPC-serializable:
+
+```cpp
+// In YourType.h
+struct YourType {
+    i32 field1;
+    String field2;
+};
+
+// Add encoder/decoder
+namespace IPC {
+    template<>
+    ErrorOr<void> encode(Encoder& encoder, YourType const& value)
+    {
+        TRY(encoder.encode(value.field1));
+        TRY(encoder.encode(value.field2));
+        return {};
+    }
+    
+    template<>
+    ErrorOr<YourType> decode(Decoder& decoder)
+    {
+        auto field1 = TRY(decoder.decode<i32>());
+        auto field2 = TRY(decoder.decode<String>());
+        return YourType { field1, move(field2) };
+    }
+}
+```
+
+## File Descriptor Passing
+
+IPC supports passing file descriptors between processes:
+
+```ipc
+endpoint ImageDecoder
+{
+    // Pass file descriptor for shared memory
+    DecodeImage([File] image_file) => ([Bitmap] decoded_bitmap)
+}
+```
+
+The `[File]` and `[Bitmap]` syntax indicates file descriptor transfer:
+- `[File]`: Transfers a file descriptor
+- `[Bitmap]`: Transfers a shared memory region containing a bitmap
+
+## Connection Lifecycle
+
+### Client Side
+
+<Steps>
+  <Step title="Create Connection">
+    ```cpp
+    auto connection = TRY(WindowServer::ConnectionToServer::try_create());
+    ```
+  </Step>
+  
+  <Step title="Send Messages">
+    ```cpp
+    // Synchronous call
+    auto response = connection->create_window(rect, "My Window"sv);
+    i32 window_id = response.window_id();
+    
+    // Asynchronous call
+    connection->invalidate_rect(window_id, dirty_rect);
+    ```
+  </Step>
+  
+  <Step title="Handle Events">
+    ```cpp
+    // If server sends events to client, override handlers:
+    void handle_paint_event(i32 window_id, Gfx::IntRect rect) override
+    {
+        // Handle paint request from server
+    }
+    ```
+  </Step>
+</Steps>
+
+### Server Side
+
+<Steps>
+  <Step title="Implement Connection Handler">
+    ```cpp
+    class ClientConnection final
+        : public WindowServer::ConnectionFromClient
+    {
+    public:
+        virtual ~ClientConnection() override = default;
+        
+    private:
+        // Implement IPC methods
+        virtual Messages::CreateWindowResponse create_window(
+            Gfx::IntRect const& rect, String const& title) override
+        {
+            auto window_id = m_server.create_window(rect, title);
+            return { window_id };
+        }
+        
+        virtual void invalidate_rect(
+            i32 window_id, Gfx::IntRect const& rect) override
+        {
+            m_server.invalidate_window_rect(window_id, rect);
+        }
+        
+        Server& m_server;
+    };
+    ```
+  </Step>
+  
+  <Step title="Accept Connections">
+    ```cpp
+    // Server listens on Unix socket
+    auto server = TRY(IPC::MultiServer<ClientConnection>::try_create());
+    
+    // Event loop handles incoming connections
+    return event_loop.exec();
+    ```
+  </Step>
+</Steps>
+
+## Common IPC Patterns
+
+### Service Discovery
+
+Services listen on well-known socket paths:
+
+```cpp
+// Standard service socket paths
+/tmp/session/%sid/portal/window     // WindowServer
+/tmp/session/%sid/portal/audio      // AudioServer
+/tmp/session/%sid/portal/clipboard  // Clipboard
+/tmp/session/%sid/portal/filesystemaccess  // FileSystemAccessServer
+```
+
+### Multi-Client Services
+
+Services handle multiple clients simultaneously:
+
+```cpp
+class MyService {
+public:
+    void run()
+    {
+        // MultiServer manages multiple client connections
+        auto server = TRY(IPC::MultiServer<ClientConnection>::try_create());
+        
+        // Each client gets own ClientConnection instance
+        server->on_new_client = [this](auto& client) {
+            dbgln("New client connected");
+        };
+        
+        Core::EventLoop::current().exec();
+    }
+};
+```
+
+### Request-Response with Timeout
+
+```cpp
+// Client can implement timeout for sync calls
+Optional<Response> send_with_timeout(Duration timeout)
+{
+    auto start = Time::now_monotonic();
+    auto response = connection->some_request();
+    
+    if (Time::now_monotonic() - start > timeout)
+        return {};  // Timeout
+    
+    return response;
+}
+```
+
+## Event Loop Integration
+
+IPC integrates seamlessly with LibCore's event loop:
+
+<Info>
+See [Event Loop Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/EventLoop.md) for details on the event system.
+</Info>
+
+```cpp
+// IPC messages are processed via event loop
+Core::EventLoop loop;
+
+auto connection = TRY(WindowServer::ConnectionToServer::try_create());
+
+// Async messages don't block event loop
+connection->async_invalidate_rect(window_id, rect);
+
+// Sync messages block until response (but event loop keeps running)
+auto response = connection->create_window(rect, title);
+
+loop.exec();
+```
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Socket Permissions">
+    Unix domain sockets use filesystem permissions:
+    - Sockets in `/tmp/session/%sid/` are user-private
+    - Only processes with same session ID can connect
+    - File permissions prevent unauthorized access
+  </Accordion>
+  
+  <Accordion title="Message Validation">
+    Services must validate all incoming data:
+    
+    ```cpp
+    virtual Messages::Response handle_request(
+        i32 id, String const& data) override
+    {
+        // Validate ID is in valid range
+        if (id < 0 || id >= m_items.size())
+            return Error::from_string_literal("Invalid ID");
+        
+        // Validate string is not too long
+        if (data.length() > MAX_SIZE)
+            return Error::from_string_literal("Data too large");
+        
+        // Process request...
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Resource Limits">
+    - Limit maximum message size
+    - Limit number of concurrent connections
+    - Implement rate limiting for expensive operations
+    - Clean up resources when clients disconnect
+  </Accordion>
+</AccordionGroup>
+
+## Real-World Examples
+
+### WindowServer Communication
+
+```cpp
+// Application creates window via IPC
+auto window = GUI::Window::construct();
+window->set_title("My Application");
+window->resize(640, 480);
+window->show();  // Internally calls WindowServer IPC
+
+// Behind the scenes:
+// GUI::Window::show() ->
+//   ConnectionToWindowServer::create_window(...) ->
+//   IPC message to WindowServer ->
+//   WindowServer creates window ->
+//   Response with window_id
+```
+
+### ImageDecoder Service
+
+```cpp
+// Decode image in isolated process
+auto connection = ImageDecoderClient::Client::try_create();
+
+// Send image data via file descriptor
+auto bitmap = TRY(connection->decode_image(image_file));
+
+// ImageDecoder runs in separate process for security
+// Prevents malicious images from compromising main app
+```
+
+### ConfigServer
+
+```cpp
+// Read configuration value
+auto config_client = TRY(Config::Client::try_create());
+auto value = config_client->read_string("MyApp", "Settings", "theme");
+
+// Write configuration value
+config_client->write_string("MyApp", "Settings", "theme", "Dark");
+
+// ConfigServer persists settings to disk
+```
+
+## Performance Characteristics
+
+<Info>
+**IPC Performance:**
+- Unix domain sockets are very fast (local communication)
+- Zero-copy for file descriptor passing
+- Minimal serialization overhead
+- Async messages have near-zero latency
+- Sync messages have ~µs round-trip time
+</Info>
+
+## Debugging IPC
+
+Tools for debugging IPC issues:
+
+```bash
+# Enable IPC debug output
+export IPC_DEBUG=1
+
+# Trace IPC messages
+export IPC_TRACE=1
+
+# Monitor socket connections
+ls -la /tmp/session/*/portal/
+
+# Check for stuck connections
+lsof | grep socket
+```
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Event Loop" icon="rotate" href="/source/Documentation/EventLoop.md">
+    How IPC integrates with the event system
+  </Card>
+  
+  <Card title="Services" icon="server" href="./userland#system-services">
+    Learn about system services that use IPC
+  </Card>
+  
+  <Card title="LibIPC Source" icon="code" href="/source/Userland/Libraries/LibIPC">
+    Explore LibIPC implementation
+  </Card>
+  
+  <Card title="Example .ipc Files" icon="file-code">
+    Study real IPC definitions in Userland/Services/
+  </Card>
+</CardGroup>

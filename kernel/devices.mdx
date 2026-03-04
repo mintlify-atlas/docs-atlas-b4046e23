@@ -1,0 +1,465 @@
+---
+title: Device Drivers
+description: Kernel device driver architecture and implementations
+---
+
+The SerenityOS kernel provides a comprehensive device driver framework with support for block devices, character devices, and various hardware subsystems.
+
+## Device Architecture
+
+### Device Base Class
+
+The `Device` class (`Kernel/Devices/Device.h`) is the base for all devices in `/dev`:
+
+<Info>
+Devices are exposed to the filesystem through device nodes with unique major and minor numbers, following the traditional Unix device model.
+</Info>
+
+**Core properties:**
+- **Major number** - Device class identifier
+- **Minor number** - Specific device instance
+- **Device state** - Normal or being removed
+
+Reference: `Kernel/Devices/Device.h:35`
+
+### Device Categories
+
+Two main device subclasses:
+
+<Accordion title="BlockDevice">
+**BlockDevice** (`Kernel/Devices/BlockDevice.h`) provides random access storage:
+
+**Characteristics:**
+- Fixed block size (typically 512 or 4096 bytes)
+- Random access to any block
+- Buffered I/O through block cache
+- Supports file systems
+
+**Operations:**
+- `read_block()` / `write_block()` - Block-level I/O
+- Asynchronous request processing
+- Request queue management
+
+**Examples:** Hard drives, SSDs, partitions, loop devices
+
+Reference: `Kernel/Devices/BlockDevice.h`
+</Accordion>
+
+<Accordion title="CharacterDevice">
+**CharacterDevice** (`Kernel/Devices/CharacterDevice.h`) provides sequential access:
+
+**Characteristics:**
+- Stream-oriented, sequential access
+- No fixed block size
+- Direct I/O (typically unbuffered)
+- Cannot host file systems
+
+**Operations:**
+- `read()` / `write()` - Byte stream I/O
+- Device-specific `ioctl()` commands
+
+**Examples:** TTYs, null device, random device, input devices
+
+Reference: `Kernel/Devices/CharacterDevice.h`
+</Accordion>
+
+### Asynchronous Device Requests
+
+`AsyncDeviceRequest` (`Kernel/Devices/AsyncDeviceRequest.h`) enables non-blocking I/O:
+
+- Request queuing system
+- Completion notifications
+- Multiple outstanding requests
+- Automatic request lifecycle management
+
+**Request workflow:**
+1. Create request with `try_make_request<AsyncRequestType>()`
+2. Request added to device queue
+3. Device processes request asynchronously
+4. Completion callback invoked
+5. Next queued request automatically started
+
+Reference: `Kernel/Devices/Device.h:58`, `Kernel/Devices/AsyncDeviceRequest.h`
+
+## Storage Devices
+
+### Storage Management
+
+`StorageManagement` (`Kernel/Devices/Storage/StorageManagement.h`) coordinates all storage:
+
+- Storage controller enumeration
+- Device discovery and registration
+- Partition detection
+- Boot device identification
+- Hot-plug support
+
+Reference: `Kernel/Devices/Storage/StorageManagement.h`
+
+### Storage Controllers
+
+**AHCI (Advanced Host Controller Interface)** (`Kernel/Devices/Storage/AHCI/`)
+
+<Info>
+AHCI is the standard interface for SATA drives, supporting modern features like NCQ (Native Command Queuing) and hot-plugging.
+</Info>
+
+**Features:**
+- SATA device support
+- Command queuing (up to 32 commands)
+- Port multiplier support
+- ATAPI device support (CD/DVD drives)
+
+**Locking strategy:**
+AHCI uses both soft locks (`Mutex`) and hard locks (`Spinlock`) for safe hardware access:
+- `Spinlock` - Critical sections with interrupts disabled
+- `Mutex` - General synchronization allowing scheduling
+- Always acquire `Mutex` before `Spinlock`
+
+Reference: `Documentation/Kernel/AHCILocking.md`, `Kernel/Devices/Storage/AHCI/`
+
+**NVMe (Non-Volatile Memory Express)** (`Kernel/Devices/Storage/NVMe/`)
+
+- PCIe-attached SSD interface
+- Queue-based command submission
+- Low latency, high IOPS
+- Multiple I/O queues for parallelism
+- Namespace support
+
+Reference: `Kernel/Devices/Storage/NVMe/`
+
+**SD/MMC Controllers** (`Kernel/Devices/Storage/SD/`)
+
+- SD card and eMMC support
+- Block-based access
+- Common in embedded systems
+
+Reference: `Kernel/Devices/Storage/SD/`
+
+**USB Mass Storage** (`Kernel/Devices/Storage/USB/`)
+
+- USB flash drives
+- External USB hard drives
+- Bulk-only transport (BOT)
+- SCSI command set over USB
+
+Reference: `Kernel/Devices/Storage/USB/`
+
+**VirtIO Block** (`Kernel/Devices/Storage/VirtIO/`)
+
+- Para-virtualized storage for VMs
+- High performance in virtualized environments
+- Virtqueue-based I/O
+
+Reference: `Kernel/Devices/Storage/VirtIO/`
+
+### Storage Device Abstraction
+
+`StorageDevice` (`Kernel/Devices/Storage/StorageDevice.h`) represents physical storage:
+
+- Implements `BlockDevice` interface
+- LBA (Logical Block Addressing) access
+- Partition table parsing
+- Automatic partition creation
+
+Reference: `Kernel/Devices/Storage/StorageDevice.h`
+
+### Partitions
+
+`StorageDevicePartition` (`Kernel/Devices/Storage/StorageDevicePartition.h`) represents disk partitions:
+
+- Also implements `BlockDevice`
+- Translates block numbers to parent device offsets
+- MBR and GPT partition table support
+- Independent device nodes (`/dev/hda1`, `/dev/nvme0n1p1`)
+
+Reference: `Kernel/Devices/Storage/StorageDevicePartition.h`
+
+## TTY Devices
+
+`TTY` subsystem (`Kernel/Devices/TTY/`) provides terminal interfaces:
+
+### TTY Types
+
+**Virtual Consoles**
+- Kernel-managed consoles (`/dev/tty0`, `/dev/tty1`, ...)
+- Direct framebuffer rendering
+- Keyboard input
+- VT100 escape sequence support
+
+**Pseudo-Terminals (PTY)**
+- Master/slave pairs for terminal emulation
+- Used by terminal emulators
+- Managed by DevPtsFS
+- Dynamic allocation via `/dev/ptmx`
+
+**Serial Ports**
+- Physical serial hardware (`/dev/ttyS0`, `/dev/ttyS1`)
+- RS-232 communication
+- Configurable baud rate, parity, stop bits
+
+Reference: `Kernel/Devices/TTY/`
+
+### TTY Features
+
+- Line discipline (cooked vs. raw mode)
+- Line editing (backspace, kill line)
+- Signal generation (Ctrl+C → SIGINT)
+- Job control (foreground/background processes)
+- Terminal size (rows/columns)
+- ANSI/VT100 escape sequences
+
+## Input Devices
+
+The input subsystem (`Kernel/Devices/Input/`) handles user input:
+
+### Keyboard Devices
+
+**PS/2 Keyboard**
+- Legacy PS/2 port keyboard
+- Scancode translation
+- Keyboard layout support
+
+Reference: `Kernel/Devices/Input/`
+
+**USB Keyboard**
+- USB HID keyboard support
+- Boot protocol and report protocol
+- Multiple simultaneous keyboards
+
+### Mouse Devices
+
+**PS/2 Mouse**
+- PS/2 port mice and touchpads
+- Relative motion reporting
+- Scroll wheel support
+
+**USB Mouse**
+- USB HID mouse support
+- Multiple buttons
+- Scroll wheels
+
+### Input Event Distribution
+
+Input events flow:
+1. Hardware interrupt (keyboard/mouse)
+2. Device driver processes event
+3. Event added to input event queue
+4. Userspace reads from `/dev/input/eventX`
+5. WindowServer dispatches to applications
+
+## Audio Devices
+
+`Audio` subsystem (`Kernel/Devices/Audio/`) provides sound support:
+
+### Audio Controllers
+
+**Intel HDA (High Definition Audio)**
+- Modern audio codec interface
+- Multiple streams
+- Sample rate conversion
+- Multi-channel audio
+
+Reference: `Kernel/Devices/Audio/`
+
+**AC97 (Audio Codec '97)**
+- Legacy audio interface
+- Common in older hardware and VMs
+- PCM playback and recording
+
+### Audio Architecture
+
+- Sample buffer management
+- DMA-based audio transfer
+- Mixing in kernel or userspace
+- OSS-compatible API
+
+## Generic Devices
+
+Common utility devices (`Kernel/Devices/Generic/`):
+
+### Null Device (`/dev/null`)
+- Discards all writes
+- Returns EOF on reads
+- Always succeeds
+
+### Zero Device (`/dev/zero`)
+- Returns infinite zeros on read
+- Discards writes
+- Used for memory initialization
+
+### Full Device (`/dev/full`)
+- Returns ENOSPC (No space) on writes
+- Returns zeros on reads
+- Tests error handling
+
+### Random Devices
+
+**`/dev/random`**
+- Cryptographically secure random numbers
+- May block if entropy pool depleted
+- Suitable for key generation
+
+**`/dev/urandom`**
+- Non-blocking random numbers
+- Uses CSPRNG when entropy low
+- Suitable for most applications
+
+Reference: `Kernel/Devices/Generic/`
+
+## Loop Devices
+
+`LoopDevice` (`Kernel/Devices/Loop/`) creates block devices from files:
+
+- File-backed block devices
+- Mount filesystem images without extraction
+- ISO mounting, disk image access
+- Multiple loop devices supported
+
+Managed through DevLoopFS (`/dev/loop/`)
+
+Reference: `Kernel/Devices/Loop/`, `Kernel/FileSystem/DevLoopFS/`
+
+## FUSE Device
+
+`FUSEDevice` (`Kernel/Devices/FUSEDevice.h`) enables userspace file systems:
+
+- Filesystem in Userspace support
+- Kernel-userspace communication channel
+- Request/response protocol
+- Allows custom file systems without kernel code
+
+Reference: `Kernel/Devices/FUSEDevice.h`
+
+## KCOV Device
+
+`KCOVDevice` (`Kernel/Devices/KCOVDevice.h`) provides kernel code coverage:
+
+- Tracks executed kernel code paths
+- Used by fuzzing tools
+- Per-process coverage tracking
+- Mmap-based coverage data access
+
+Reference: `Kernel/Devices/KCOVDevice.h`
+
+## SysFS Device Representation
+
+All devices exposed in SysFS (`/sys/dev/`):
+
+### Directory Structure
+
+```
+/sys/dev/
+├── block/          # Block devices
+│   ├── hda/
+│   └── nvme0n1/
+└── char/           # Character devices
+    ├── console/
+    └── null/
+```
+
+**Device components:**
+- `SysFSDeviceComponent` - Device information exposure
+- `SysFSSymbolicLinkDeviceComponent` - Symlinks to device directories
+- Device-specific attributes (vendor, model, size, etc.)
+
+Reference: `Kernel/Devices/Device.h:127`, `Kernel/FileSystem/SysFS/Subsystems/DeviceIdentifiers/`
+
+## Device Lifecycle
+
+### Device Registration
+
+```cpp
+template<typename DeviceType, typename... Args>
+static ErrorOr<NonnullRefPtr<DeviceType>> try_create_device(Args&&... args)
+{
+    auto device = TRY(adopt_nonnull_ref_or_enomem(
+        new (nothrow) DeviceType(forward<Args>(args)...)));
+    TRY(device->after_inserting());
+    return device;
+}
+```
+
+Reference: `Kernel/Devices/Device.h:78`
+
+### Device Removal
+
+1. Mark device state as `BeingRemoved`
+2. Call `before_will_be_destroyed_remove_from_device_management()`
+3. Remove from SysFS
+4. Remove device node from `/dev`
+5. Invalidate open file descriptions
+6. Release resources
+
+Reference: `Kernel/Devices/Device.h:52`
+
+## Base Devices
+
+The kernel pre-creates essential base devices:
+
+- `/dev/null` - Null device
+- `/dev/zero` - Zero device
+- `/dev/full` - Full device
+- `/dev/random` - Random number generator
+- `/dev/console` - System console
+
+These are available immediately at boot before device discovery.
+
+Reference: `Kernel/Devices/BaseDevices.h`, `Kernel/Devices/Device.h:70`
+
+## Device Event Queue
+
+System-wide device event notification:
+
+```cpp
+static SpinlockProtected<CircularQueue<DeviceEvent, 100>, LockRank::None>& 
+    event_queue();
+```
+
+Events include:
+- Device insertion/removal
+- State changes
+- Error conditions
+
+Userspace monitoring via `/dev/devctl` or similar interface.
+
+Reference: `Kernel/Devices/Device.h:69`
+
+## Implementation Patterns
+
+### Creating a New Device Driver
+
+1. **Choose base class:** `BlockDevice` or `CharacterDevice`
+2. **Implement required methods:**
+   - `device_name()` - Device name string
+   - I/O operations (`read()`, `write()`, etc.)
+   - Optional `ioctl()` for device-specific control
+3. **Allocate major/minor numbers**
+4. **Register with device management**
+5. **Create SysFS representation**
+6. **Handle device lifecycle** (initialization, removal)
+
+### Interrupt Handling
+
+Device drivers handle interrupts:
+- Register IRQ handler during initialization
+- Process interrupt in handler
+- Wake waiting processes
+- Schedule deferred work if needed
+
+### DMA (Direct Memory Access)
+
+Many devices use DMA for efficient data transfer:
+- Allocate physically contiguous buffers
+- Program device with physical addresses
+- Handle completion interrupts
+- Synchronize CPU caches
+
+## Future Enhancements
+
+Planned device subsystem improvements:
+
+- **Hot-plug support** - Better dynamic device management
+- **Power management** - Device sleep states, power budgets
+- **Device tree** - ARM/embedded hardware description
+- **USB improvements** - More device classes, USB 3.0
+- **Network devices** - Unified network device framework

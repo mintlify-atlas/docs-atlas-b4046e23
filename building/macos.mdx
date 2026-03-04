@@ -1,0 +1,259 @@
+---
+title: Building on macOS
+description: Build SerenityOS on macOS with Homebrew or Nix
+---
+
+## Prerequisites
+
+This guide assumes you have:
+- [Homebrew](https://brew.sh) installed
+- Xcode or Xcode Command Line Tools installed
+
+<Note>
+The Command Line Tools alone are sufficient - you don't need the full Xcode application.
+</Note>
+
+## Setup with Homebrew
+
+<Steps>
+  <Step title="Configure Xcode Command Line Tools">
+    If you have the **full Xcode application** installed, set your command line tools to use Xcode's tools:
+
+    ```bash
+    sudo xcode-select --switch /Applications/Xcode.app
+    ```
+
+    <Info>
+    Skip this step if you only have the Command Line Tools installed.
+    </Info>
+  </Step>
+
+  <Step title="Install core dependencies">
+    ```bash
+    brew install coreutils e2fsprogs qemu bash imagemagick ninja \
+      cmake ccache rsync zstd
+    ```
+  </Step>
+
+  <Step title="Install filesystem support">
+    Choose one of the following options:
+
+    <Tabs>
+      <Tab title="Option 1: fuse + ext2">
+        ```bash
+        brew install m4 autoconf automake libtool
+        brew install --cask macfuse
+        Toolchain/BuildFuseExt2.sh
+        ```
+
+        <Warning>
+        Installing macfuse for the first time requires:
+        1. Enabling its system extension in System Settings
+        2. Restarting your machine
+        </Warning>
+      </Tab>
+
+      <Tab title="Option 2: genext2fs">
+        ```bash
+        brew install genext2fs
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Install debugging tools (Apple Silicon only)">
+    For kernel debugging on Apple Silicon Macs:
+
+    ```bash
+    brew install x86_64-elf-gdb
+    ```
+
+    <Info>
+    This provides a native build of GDB that can cross-debug x86-64 code.
+    </Info>
+  </Step>
+
+  <Step title="Install newer compiler (Xcode 14.2 or older)">
+    If you have Xcode 14.2 or older, install a newer host compiler:
+
+    <Tabs>
+      <Tab title="LLVM 18">
+        ```bash
+        brew install llvm@18
+        ```
+      </Tab>
+
+      <Tab title="GCC 13">
+        ```bash
+        brew install gcc@13
+        ```
+      </Tab>
+    </Tabs>
+
+    <Note>
+    Xcode 14.3 or later is known to work without additional compilers.
+    </Note>
+  </Step>
+</Steps>
+
+## Setup with Nix
+
+If you have Nix installed, you can enter a devshell with all dependencies:
+
+```bash
+nix --extra-experimental-features "nix-command flakes" develop
+```
+
+## Build and Run
+
+Once all dependencies are installed:
+
+```bash
+Meta/serenity.sh run
+```
+
+<Info>
+Refer to the main [Build System Overview](/building/overview#build) for detailed build instructions.
+</Info>
+
+## Platform Notes
+
+### Apple Silicon vs Intel
+
+<Tabs>
+  <Tab title="Apple Silicon">
+    - Both native **aarch64** and **x86_64** builds are supported
+    - Rosetta 2 should be **disabled** to build native aarch64 version
+    - Use `x86_64-elf-gdb` for debugging x86-64 kernel
+  </Tab>
+
+  <Tab title="Intel">
+    - Builds **x86_64** natively
+    - No special configuration required
+  </Tab>
+</Tabs>
+
+### macfuse Installation
+
+<Warning>
+After installing macfuse via Homebrew:
+1. Open **System Settings** (or System Preferences on older macOS)
+2. Enable the macfuse system extension
+3. **Restart your Mac**
+
+This is easy to miss but required for macfuse to work.
+</Warning>
+
+### CMake Version Notes
+
+Homebrew ships bleeding-edge CMake versions, which should work fine. However:
+
+<Warning>
+Building CMake from source with Homebrew GCC or LLVM may not work on all platforms.
+</Warning>
+
+If Homebrew doesn't offer CMake 3.25.x+ on your platform:
+
+```bash
+# Manually build CMake with Apple clang
+Toolchain/BuildCMake.sh
+```
+
+Make sure Apple clang from Xcode is first in your `$PATH`.
+
+### Xcode Compatibility
+
+<Note>
+If you have the full Xcode installed, keep it updated to avoid CMake compatibility issues with GCC.
+</Note>
+
+## Troubleshooting
+
+### macfuse Not Working
+
+If you get permission errors:
+
+1. Check System Settings for enabled kernel extensions
+2. Ensure you've restarted after installation
+3. Try reinstalling:
+   ```bash
+   brew reinstall --cask macfuse
+   ```
+
+### CMake Build Issues
+
+If you encounter CMake errors:
+
+```bash
+# Remove old cache files
+rm Build/*/CMakeCache.txt
+
+# Ensure Xcode tools are configured
+sudo xcode-select --switch /Applications/Xcode.app
+
+# Or for Command Line Tools only:
+sudo xcode-select --switch /Library/Developer/CommandLineTools
+```
+
+### Compiler Version Issues
+
+Verify your compiler versions:
+
+<CodeGroup>
+```bash Check GCC
+gcc --version
+```
+
+```bash Check Clang
+clang --version
+```
+
+```bash Check Xcode version
+xcodebuild -version
+```
+</CodeGroup>
+
+### QEMU Launch Failures
+
+If QEMU fails to start:
+
+```bash
+# Ensure QEMU is properly installed
+brew reinstall qemu
+
+# Check QEMU version (6.2+ required)
+qemu-system-x86_64 --version
+```
+
+## Architecture-Specific Builds
+
+To build for a specific architecture:
+
+<Tabs>
+  <Tab title="x86_64">
+    ```bash
+    SERENITY_ARCH=x86_64 Meta/serenity.sh run
+    ```
+  </Tab>
+
+  <Tab title="aarch64">
+    ```bash
+    SERENITY_ARCH=aarch64 Meta/serenity.sh run
+    ```
+
+    <Warning>
+    Disable Rosetta 2 before building aarch64.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Advanced Options" icon="gear" href="/building/advanced">
+    Explore build customization and CMake options
+  </Card>
+  <Card title="Build System Overview" icon="book" href="/building/overview">
+    Learn more about the SuperBuild system
+  </Card>
+</CardGroup>

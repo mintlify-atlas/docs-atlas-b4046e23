@@ -1,0 +1,350 @@
+---
+title: VS Code Configuration
+description: Set up Visual Studio Code for SerenityOS development
+---
+
+Visual Studio Code provides excellent support for SerenityOS development with clangd integration and customizable workflows.
+
+## WSL Support
+
+The WSL Remote extension allows you to use VS Code in Windows while using the normal WSL workflow. This works well, but for code comprehension speed you should put the Serenity directory on your WSL root partition.
+
+## Recommended Extensions
+
+Install these extensions for the best SerenityOS development experience:
+
+<Steps>
+  <Step title="Install clangd">
+    [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) - Essential for code comprehension
+    
+    See [ClangdConfiguration](ClangdConfiguration.md) for configuration details.
+  </Step>
+  
+  <Step title="Install GitLens (Optional)">
+    [GitLens](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens) - Enhanced git integration
+  </Step>
+  
+  <Step title="Install SerenityOS DSL Syntax Highlight">
+    Available on [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kleinesfilmroellchen.serenity-dsl-syntaxhighlight) or [Open VSX](https://open-vsx.org/extension/kleinesfilmroellchen/serenity-dsl-syntaxhighlight)
+    
+    Provides syntax highlighting for:
+    - LibIPC's IPC files
+    - LibGUI's GUI Markup Language (GML)
+    - Web IDL
+    - LibJS serialization format
+  </Step>
+  
+  <Step title="Install Jakt Extension (Optional)">
+    If working with Jakt code, build and install the extension from the [Jakt repository](https://github.com/SerenityOS/jakt/tree/main/editors/vscode)
+  </Step>
+</Steps>
+
+## Code Comprehension
+
+Clangd has the best support for cross-compiling workflows, especially when configured properly. The Microsoft C/C++ tools can work, but require more configuration and may not understand the sysroot in use.
+
+<Accordion title="Alternative: Microsoft C/C++ Tools">
+  This extension can be used as-is, but you need to point it to the custom Serenity compilers. Note that enabling this extension in the same workspace as clangd will cause conflicts.
+  
+  Even with proper configuration, the extension will likely still report errors related to types and methods not being found.
+  
+  Create `.vscode/c_cpp_properties.json`:
+  
+  ```json
+  {
+      "configurations": [
+          {
+              "name": "userland-x86_64-gcc",
+              "includePath": [
+                  "${workspaceFolder}",
+                  "${workspaceFolder}/Build/x86_64/",
+                  "${workspaceFolder}/Build/x86_64/Userland",
+                  "${workspaceFolder}/Build/x86_64/Userland/Applications",
+                  "${workspaceFolder}/Build/x86_64/Userland/Libraries",
+                  "${workspaceFolder}/Build/x86_64/Userland/Services",
+                  "${workspaceFolder}/Build/x86_64/Root/usr/include/**",
+                  "${workspaceFolder}/Userland",
+                  "${workspaceFolder}/Userland/Libraries",
+                  "${workspaceFolder}/Userland/Libraries/LibC",
+                  "${workspaceFolder}/Userland/Services",
+                  "${workspaceFolder}/Toolchain/Local/x86_64/x86_64-pc-serenity/include/c++/**"
+              ],
+              "defines": ["DEBUG", "__serenity__"],
+              "compilerPath": "${workspaceFolder}/Toolchain/Local/x86_64/bin/x86_64-pc-serenity-g++",
+              "cStandard": "c17",
+              "cppStandard": "c++26",
+              "intelliSenseMode": "linux-gcc-x86",
+              "compileCommands": "Build/x86_64/compile_commands.json",
+              "compilerArgs": ["-Wall", "-Wextra", "-Werror"],
+              "browse": {
+                  "path": [
+                      "${workspaceFolder}",
+                      "${workspaceFolder}/Build/x86_64/",
+                      "${workspaceFolder}/Build/x86_64/Userland",
+                      "${workspaceFolder}/Build/x86_64/Userland/Applications",
+                      "${workspaceFolder}/Build/x86_64/Userland/Libraries",
+                      "${workspaceFolder}/Build/x86_64/Userland/Services",
+                      "${workspaceFolder}/Build/x86_64/Root/usr/include/**",
+                      "${workspaceFolder}/Userland",
+                      "${workspaceFolder}/Userland/Libraries",
+                      "${workspaceFolder}/Userland/Libraries/LibC",
+                      "${workspaceFolder}/Userland/Services",
+                      "${workspaceFolder}/Toolchain/Local/x86_64/x86_64-pc-serenity/include/c++/**"
+                  ],
+                  "limitSymbolsToIncludedHeaders": true,
+                  "databaseFilename": "${workspaceFolder}/Build/x86_64/"
+              }
+          }
+      ],
+      "version": 4
+  }
+  ```
+</Accordion>
+
+## Settings Configuration
+
+Create or update `.vscode/settings.json` in your Serenity repository:
+
+```json
+{
+    // Excluding the generated directories keeps your file view clean and speeds up search.
+    "files.exclude": {
+        "**/.git": true,
+        "Toolchain/Local/**": true,
+        "Toolchain/Tarballs/**": true,
+        "Toolchain/Build/**": true,
+        "Build/**": true,
+        "build/**": true
+    },
+    "search.exclude": {
+        "**/.git": true,
+        "Toolchain/Local/**": true,
+        "Toolchain/Tarballs/**": true,
+        "Toolchain/Build/**": true,
+        "Build/**": true,
+        "build/**": true
+    },
+    // Force clang-format to respect Serenity's .clang-format style file.
+    // Not necessary if you're not using the Microsoft C++ extension.
+    "C_Cpp.clang_format_style": "file",
+    // Tab settings
+    "editor.tabSize": 4,
+    "editor.useTabStops": false,
+    // Format trailing new lines
+    "files.trimFinalNewlines": true,
+    "files.insertFinalNewline": true,
+    // Git commit message length
+    "git.inputValidationLength": 72,
+    "git.inputValidationSubjectLength": 72,
+    // See ClangdConfiguration.md for arguments that may be needed.
+    "clangd.arguments": [],
+    // Set if needed.
+    "clangd.path": "..."
+}
+```
+
+## Custom Build Tasks
+
+Create `.vscode/tasks.json` to quickly compile and run Serenity:
+
+<Accordion title="View tasks.json configuration">
+  ```json
+  {
+      "version": "2.0.0",
+      "tasks": [
+          {
+              "label": "build lagom",
+              "type": "shell",
+              "problemMatcher": [
+                  {
+                      "base": "$gcc",
+                      "fileLocation": ["relative", "${workspaceFolder}/Build/lagom"]
+                  }
+              ],
+              "command": ["bash"],
+              "args": ["-c", "\"Meta/serenity.sh build lagom\""],
+              "presentation": {
+                  "echo": true,
+                  "reveal": "always",
+                  "focus": false,
+                  "group": "build",
+                  "panel": "shared",
+                  "showReuseMessage": true,
+                  "clear": true
+              }
+          },
+          {
+              "label": "build",
+              "type": "shell",
+              "command": "bash",
+              "args": ["-c", "Meta/serenity.sh build ${input:arch} ${input:compiler}"],
+              "problemMatcher": [
+                  {
+                      "base": "$gcc",
+                      "fileLocation": [
+                          "relative",
+                          "${workspaceFolder}/Build/${input:arch}"
+                      ]
+                  },
+                  {
+                      "source": "gcc",
+                      "fileLocation": [
+                          "relative",
+                          "${workspaceFolder}/Build/${input:arch}"
+                      ],
+                      "pattern": [
+                          {
+                              "regexp": "^([^\\s]*\\.S):(\\d*): (.*)$",
+                              "file": 1,
+                              "location": 2,
+                              "message": 3
+                          }
+                      ]
+                  }
+              ],
+              "group": {
+                  "kind": "build",
+                  "isDefault": true
+              }
+          },
+          {
+              "label": "launch",
+              "type": "shell",
+              "command": "bash",
+              "args": ["-c", "Meta/serenity.sh run ${input:arch} ${input:compiler}"],
+              "options": {
+                  "env": {
+                      // Put your custom run configuration here, e.g. SERENITY_RAM_SIZE
+                  }
+              },
+              "problemMatcher": [
+                  {
+                      "base": "$gcc",
+                      "fileLocation": [
+                          "relative",
+                          "${workspaceFolder}/Build/${input:arch}"
+                      ]
+                  },
+                  {
+                      "source": "gcc",
+                      "fileLocation": [
+                          "relative",
+                          "${workspaceFolder}/Build/${input:arch}"
+                      ],
+                      "pattern": [
+                          {
+                              "regexp": "^([^\\s]*\\.S):(\\d*): (.*)$",
+                              "file": 1,
+                              "location": 2,
+                              "message": 3
+                          }
+                      ]
+                  },
+                  {
+                      "source": "KUBSan",
+                      "owner": "cpp",
+                      "fileLocation": ["relative", "${workspaceFolder}"],
+                      "pattern": [
+                          {
+                              "regexp": "KUBSAN: (.*)",
+                              "message": 0
+                          },
+                          {
+                              "regexp": "KUBSAN: at ../(.*)\\, line (\\d*)\\, column: (\\d*)",
+                              "file": 1,
+                              "line": 2,
+                              "column": 3
+                          }
+                      ]
+                  },
+                  {
+                      "source": "Assertion Failed",
+                      "owner": "cpp",
+                      "pattern": [
+                          {
+                              "regexp": "ASSERTION FAILED: (.*)$",
+                              "message": 1
+                          },
+                          {
+                              "regexp": "^((?:.*)\\.(?:h|cpp|c|S)):(\\d*)$",
+                              "file": 1,
+                              "location": 3
+                          }
+                      ],
+                      "fileLocation": [
+                          "relative",
+                          "${workspaceFolder}/Build/${input:arch}"
+                      ]
+                  }
+              ]
+          }
+      ],
+      "inputs": [
+          {
+              "id": "compiler",
+              "description": "Compiler to use",
+              "type": "pickString",
+              "default": "GNU",
+              "options": ["GNU", "Clang"]
+          },
+          {
+              "id": "arch",
+              "description": "Architecture to compile for",
+              "type": "pickString",
+              "default": "x86_64",
+              "options": ["x86_64", "aarch64"]
+          }
+      ]
+  }
+  ```
+  
+  Note: The Assertion and KUBSan problem matchers will only run after you have closed QEMU.
+</Accordion>
+
+## License Snippet
+
+Create `.vscode/serenity.code-snippets` to quickly generate license headers:
+
+```json
+{
+    "License": {
+        "scope": "cpp,c",
+        "prefix": "license",
+        "body": [
+            "/*",
+            " * Copyright (c) $CURRENT_YEAR, ${1:Your Name} <${2:YourName@Email.com}>.",
+            " *",
+            " * SPDX-License-Identifier: BSD-2-Clause",
+            " */"
+        ],
+        "description": "License header"
+    }
+}
+```
+
+## Jakt Configuration
+
+If working with Jakt code, add these settings to your `settings.json`:
+
+```json
+{
+    // If you have installed jakt globally, you can omit this setting
+    // (though the compiler build should match the one in your serenity checkout)
+    "jaktLanguageServer.compiler.executablePath": "Toolchain/Local/jakt/bin/jakt",
+
+    "jaktLanguageServer.extraCompilerImportPaths": [
+        ".",
+        "Userland/Libraries",
+        "Userland/Libraries/LibCrypt",
+        "Userland/Libraries/LibSystem",
+        "Userland/Services",
+        "Userland",
+        "Build/x86_64",
+        "Build/x86_64/Userland/Services",
+        "Build/x86_64/Userland/Libraries",
+        "Build/x86_64/Userland"
+    ]
+}
+```
+
+Note: Build directories are architecture-specific, so adjust if working with different architectures.

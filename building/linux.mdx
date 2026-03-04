@@ -1,0 +1,337 @@
+---
+title: Building on Linux
+description: Build SerenityOS on Debian, Ubuntu, Arch Linux, and other distributions
+---
+
+## Debian / Ubuntu
+
+### Install Dependencies
+
+<Steps>
+  <Step title="Install build tools and libraries">
+    ```bash
+    sudo apt install build-essential cmake curl libmpfr-dev libmpc-dev \
+      libgmp-dev e2fsprogs ninja-build qemu-system-gui qemu-system-x86 \
+      qemu-utils ccache rsync unzip texinfo libssl-dev zlib1g-dev
+    ```
+
+    <Note>
+    Optional: Install `fuse2fs` for building images without root privileges.
+    </Note>
+  </Step>
+
+  <Step title="Install GCC 14 or Clang 17+">
+    <Tabs>
+      <Tab title="GCC 14">
+        On Ubuntu 24.04 (Noble) and later:
+        ```bash
+        sudo apt update
+        sudo apt install gcc-14 g++-14
+        ```
+
+        For older versions, use the [ubuntu-toolchain-r/test PPA](https://launchpad.net/~ubuntu-toolchain-r/+archive/ubuntu/test).
+      </Tab>
+
+      <Tab title="Clang 17-19">
+        Use the [LLVM apt repositories](https://apt.llvm.org/):
+        ```bash
+        sudo apt update
+        sudo apt install libclang-19-dev clang-19 llvm-19 llvm-19-dev
+        ```
+
+        <Note>
+        The `-dev` packages are only necessary when Jakt is enabled.
+        </Note>
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Install QEMU 6.2 or later">
+    Ubuntu 22.04 and later include QEMU 6.2. For earlier versions, build from source:
+    
+    ```bash
+    # Install QEMU build dependencies
+    sudo apt install libgtk-3-dev libpixman-1-dev libsdl2-dev \
+      libslirp-dev libspice-server-dev
+    
+    # Build QEMU from toolchain
+    Toolchain/BuildQemu.sh
+    ```
+  </Step>
+
+  <Step title="Verify CMake version">
+    CMake 3.25.0 or later is required. If your version is older:
+    
+    ```bash
+    # The build scripts will automatically build CMake from source
+    # If you have old CMake cache files, remove them:
+    rm Build/*/CMakeCache.txt
+    ```
+  </Step>
+</Steps>
+
+### Build and Run
+
+```bash
+Meta/serenity.sh run
+```
+
+<Warning>
+If you see `fusermount: failed to open /etc/mtab: No such file or directory`, create the symlink:
+```bash
+sudo ln -sv /proc/self/mounts /etc/mtab
+```
+</Warning>
+
+## Arch Linux / Manjaro
+
+### Install Dependencies
+
+```bash
+sudo pacman -S --needed base-devel cmake curl mpfr libmpc gmp e2fsprogs \
+  ninja qemu-desktop qemu-system-aarch64 ccache rsync unzip
+```
+
+Optional packages:
+- `fuse2fs` - For building images without root
+- `clang llvm llvm-libs` - For building with Clang
+
+### Build and Run
+
+```bash
+Meta/serenity.sh run
+```
+
+## Fedora
+
+### Install Dependencies
+
+```bash
+sudo dnf install texinfo binutils-devel curl cmake mpfr-devel \
+  libmpc-devel gmp-devel e2fsprogs ninja-build patch ccache rsync \
+  @development-tools @c-development @virtualization
+```
+
+Optional: `e2fsprogs` package for building images without root.
+
+## openSUSE
+
+### Install Dependencies
+
+```bash
+sudo zypper install curl cmake mpfr-devel mpc-devel ninja gmp-devel \
+  e2fsprogs patch qemu-x86 qemu-audio-pa gcc gcc-c++ ccache rsync \
+  patterns-devel-C-C++-devel_C_C++
+```
+
+## Void Linux
+
+### Install Dependencies
+
+```bash
+sudo xbps-install -S base-devel cmake curl mpfr-devel libmpc-devel \
+  gmp-devel e2fsprogs ninja qemu ccache rsync
+```
+
+## ALT Linux
+
+### Install Dependencies
+
+```bash
+apt-get install curl cmake libmpc-devel gmp-devel e2fsprogs \
+  libmpfr-devel ninja-build patch gcc ccache rsync
+```
+
+## NixOS
+
+### Using Flakes
+
+The repository includes a flake with all required dependencies:
+
+```bash
+nix develop
+```
+
+### Using Legacy nix-shell
+
+```bash
+nix-shell Toolchain
+```
+
+This uses `Toolchain/default.nix` and your host `nixpkgs`.
+
+## Alpine Linux
+
+<Warning>
+Tested on `edge`. YMMV on `stable`.
+</Warning>
+
+### Install Dependencies
+
+<Steps>
+  <Step title="Enable community repository">
+    Edit `/etc/apk/repositories` to enable the `community` repository, then:
+    ```bash
+    apk update
+    ```
+  </Step>
+
+  <Step title="Install basic tools">
+    ```bash
+    apk add bash curl git util-linux sudo
+    ```
+  </Step>
+
+  <Step title="Install GNU coreutils">
+    ```bash
+    apk add coreutils
+    ```
+  </Step>
+
+  <Step title="Install build tools">
+    ```bash
+    apk add build-base
+    ```
+  </Step>
+
+  <Step title="Install QEMU">
+    ```bash
+    apk add qemu qemu-system-x86_64 qemu-img qemu-ui-gtk qemu-audio-pa
+    ```
+  </Step>
+
+  <Step title="Install development libraries">
+    ```bash
+    apk add cmake e2fsprogs grub-bios samurai mpc1-dev mpfr-dev gmp-dev \
+      ccache rsync texinfo
+    ```
+    
+    <Note>
+    `samurai` is a drop-in replacement for ninja.
+    </Note>
+  </Step>
+</Steps>
+
+## OpenBSD
+
+### Install Dependencies
+
+```bash
+doas pkg_add bash cmake g++ gcc git gmake gmp ninja ccache rsync \
+  coreutils qemu sudo e2fsprogs
+```
+
+## FreeBSD
+
+### Install Dependencies
+
+```bash
+pkg install qemu bash cmake coreutils e2fsprogs fusefs-ext2 gcc11 git \
+  gmake ninja sudo gmp mpc mpfr ccache rsync
+```
+
+<Note>
+Optional: `fusefs-ext2` for building images without root.
+</Note>
+
+## Building on SerenityOS
+
+You can build SerenityOS on SerenityOS itself!
+
+### Install Required Ports
+
+```bash
+bash cmake curl e2fsprogs gawk genext2fs git ninja patch python3 qemu rsync
+```
+
+### Install Toolchain Ports
+
+<Tabs>
+  <Tab title="LLVM">
+    ```bash
+    # Install the llvm port
+    ```
+  </Tab>
+
+  <Tab title="GCC">
+    ```bash
+    # Install gcc, gmp and mpc ports
+    ```
+  </Tab>
+</Tabs>
+
+### Configure Shell
+
+Create a symlink from `/bin/sh` to `/usr/local/bin/bash`:
+
+```bash
+ln -sf /usr/local/bin/bash mnt/bin/sh
+```
+
+<Note>
+Add this to your [customization script](/building/advanced#customizing-the-disk-image) to persist across rebuilds.
+</Note>
+
+## Ports
+
+To build a port, navigate to its directory and run the package script:
+
+```bash
+cd Ports/curl
+./package.sh
+```
+
+The port will be available the next time you start SerenityOS.
+
+### Common Port Dependencies
+
+<Tabs>
+  <Tab title="Essential">
+    ```bash
+    sudo apt install autoconf automake bison flex gettext gperf \
+      help2man imagemagick libgpg-error-dev libtool lzip meson nasm \
+      python3-packaging qt6-base-dev rename zip
+    ```
+  </Tab>
+
+  <Tab title="Exotic">
+    - `file` (version 5.44 exactly, for file port)
+    - `libpython3-dev` (for boost)
+    - `lua` (for luarocks)
+    - `openjdk-17-jdk` (for OpenJDK)
+    - `p7zip-full` (for msttcorefonts)
+    - `rake` (for mruby)
+  </Tab>
+</Tabs>
+
+<Warning>
+Some ports require a symlink from `/usr/bin/python` to `/usr/bin/python3`.
+</Warning>
+
+## Troubleshooting
+
+### Outdated Toolchain
+
+If prompted to rebuild the toolchain:
+
+```bash
+# Remove old toolchain
+rm -rf Toolchain/Local
+
+# Rebuild
+Meta/serenity.sh rebuild-toolchain
+```
+
+### CMake Cache Issues
+
+If CMake complains about version mismatches:
+
+```bash
+rm Build/*/CMakeCache.txt
+```
+
+## Next Steps
+
+<Card title="Advanced Build Options" icon="gear" href="/building/advanced">
+  Explore CMake options, build configurations, and customization
+</Card>

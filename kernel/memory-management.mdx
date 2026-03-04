@@ -1,0 +1,245 @@
+---
+title: Memory Management
+description: Virtual memory management, page allocation, and address space handling in the SerenityOS kernel
+---
+
+The SerenityOS kernel implements a sophisticated memory management system that handles virtual memory, physical page allocation, and address space management. The memory subsystem is located in `Kernel/Memory/` and provides the foundation for process isolation and memory protection.
+
+## Core Components
+
+### MemoryManager
+
+The `MemoryManager` is the central singleton responsible for all memory operations in the kernel. Located in `Kernel/Memory/MemoryManager.h`, it provides:
+
+- Physical page allocation and deallocation
+- Virtual memory region management
+- Page fault handling
+- Kernel memory allocation
+- DMA buffer management
+
+<Info>
+The MemoryManager is initialized before global constructors run, so it cannot use the standard Singleton pattern.
+</Info>
+
+#### Key Responsibilities
+
+**Physical Page Management**
+
+The memory manager tracks physical RAM pages through the `PhysicalRAMPage` class. Each page is reference-counted and can be:
+
+- **Allocated**: Active page in use by a process or kernel
+- **Free**: Available for allocation
+- **Shared Zero Page**: Special read-only page filled with zeros
+- **Lazy Committed**: Page reserved but not yet backed by physical memory
+
+```cpp
+// From Kernel/Memory/MemoryManager.h
+ErrorOr<NonnullRefPtr<PhysicalRAMPage>> allocate_physical_page(
+    ShouldZeroFill = ShouldZeroFill::Yes,
+    bool* did_purge = nullptr,
+    MemoryType memory_type_for_zero_fill = MemoryType::Normal
+);
+```
+
+**Virtual Memory Allocation**
+
+The memory manager provides several allocation strategies:
+
+- `allocate_kernel_region()`: General kernel memory allocation
+- `allocate_contiguous_kernel_region()`: Physically contiguous memory (for DMA)
+- `allocate_dma_buffer_pages()`: Device DMA buffers with specific memory types
+- `allocate_mmio_kernel_region()`: Memory-mapped I/O regions
+
+### AddressSpace
+
+Each process has its own `AddressSpace` (`Kernel/Memory/AddressSpace.h`) which encapsulates:
+
+- A `PageDirectory` for page table management
+- A `RegionTree` containing all virtual memory regions
+- Memory allocation and deallocation for the process
+
+```cpp
+// Address space operations
+ErrorOr<Region*> allocate_region(
+    RandomizeVirtualAddress,
+    VirtualAddress requested_address,
+    size_t requested_size,
+    size_t requested_alignment,
+    StringView name,
+    int prot = PROT_READ | PROT_WRITE,
+    AllocationStrategy strategy = AllocationStrategy::Reserve
+);
+```
+
+<Accordion title="Address Space Statistics">
+The AddressSpace class provides methods to query memory usage:
+
+- `amount_resident()`: Pages currently in physical memory
+- `amount_virtual()`: Total virtual address space used
+- `amount_shared()`: Shared memory pages
+- `amount_dirty_private()`: Modified private pages
+- `amount_purgeable_volatile()`: Volatile purgeable memory
+- `amount_clean_inode()`: Clean file-backed pages
+</Accordion>
+
+### Region
+
+A `Region` (`Kernel/Memory/Region.h`) represents a contiguous virtual memory mapping with specific properties:
+
+```cpp
+enum Access : u8 {
+    None = 0,
+    Read = 1,
+    Write = 2,
+    Execute = 4,
+    ReadOnly = Read,
+    ReadWrite = Read | Write,
+    ReadWriteExecute = Read | Write | Execute,
+};
+```
+
+Regions track:
+- Virtual address range (`VirtualRange`)
+- Access permissions (read/write/execute)
+- Backing VMObject
+- Memory type (Normal, IO, NonCacheable)
+- Special flags (stack, mmap, shared, immutable)
+
+### VMObject
+
+Virtual Memory Objects (`Kernel/Memory/VMObject.h`) represent the backing store for memory regions. Several types exist:
+
+**AnonymousVMObject** (`AnonymousVMObject.h`)
+- Anonymous memory (not backed by files)
+- Used for heap, stack, and anonymous mmap
+- Supports copy-on-write
+
+**InodeVMObject** (`InodeVMObject.h`)
+- File-backed memory
+- Subtypes:
+  - `SharedInodeVMObject`: Shared file mappings
+  - `PrivateInodeVMObject`: Private file mappings with COW
+
+**MMIOVMObject** (`MMIOVMObject.h`)
+- Memory-mapped I/O regions
+- Direct physical memory access for devices
+
+## Memory Allocation Strategies
+
+The kernel supports different allocation strategies defined in `AllocationStrategy.h`:
+
+- **Reserve**: Reserve virtual address space without committing physical pages
+- **AllocateNow**: Immediately allocate and map physical pages
+- **None**: Don't allocate anything (for special cases)
+
+<Info>
+Reserve strategy enables lazy allocation where physical pages are only allocated on first access (demand paging).
+</Info>
+
+## Page Fault Handling
+
+The MemoryManager handles page faults through `handle_page_fault()`. Page faults occur when:
+
+1. **Lazy Allocation**: Accessing reserved but uncommitted memory
+2. **Copy-on-Write**: Writing to a shared page
+3. **File-backed Pages**: Accessing unmapped file data
+4. **Invalid Access**: Permission violations or unmapped memory
+
+Page fault responses (from `PageFaultResponse.h`):
+- `Continue`: Fault handled successfully
+- `ShouldCrash`: Invalid memory access
+- `OutOfMemory`: Physical memory exhausted
+
+## Physical Memory Management
+
+### Physical Regions
+
+Physical memory is divided into regions tracked by `PhysicalRegion` and organized into `PhysicalZone` buckets. The system maintains:
+
+- Available physical pages
+- Used memory ranges (kernel, boot modules, SMBIOS, etc.)
+- Reserved memory ranges
+
+### Committed Pages
+
+The kernel uses a commit/uncommit model for memory:
+
+```cpp
+ErrorOr<CommittedPhysicalPageSet> commit_physical_pages(size_t page_count);
+```
+
+Committing pages reserves them from the free pool, preventing allocation failures during critical operations.
+
+## Memory Types
+
+Different memory regions require different caching and access characteristics (`MemoryType.h`):
+
+- **Normal**: Standard cacheable memory
+- **IO**: Memory-mapped I/O (uncacheable)
+- **NonCacheable**: Non-cached memory (for DMA buffers)
+
+<Warning>
+Using the wrong memory type can cause data corruption or system instability, especially with DMA operations.
+</Warning>
+
+## Quickmap
+
+For temporary kernel access to arbitrary physical pages, the MemoryManager provides a "quickmap" facility:
+
+```cpp
+u8* quickmap_page(PhysicalAddress, MemoryType = MemoryType::Normal);
+void unquickmap_page();
+```
+
+Quickmap is processor-specific and protected by spinlocks, allowing quick temporary mappings without full page table updates.
+
+## Key Operations
+
+### Allocating Kernel Memory
+
+```cpp
+// Allocate a kernel region with specific access
+auto region = TRY(MM.allocate_kernel_region(
+    PAGE_SIZE * 4,
+    "MyRegion"sv,
+    Region::Access::ReadWrite,
+    AllocationStrategy::AllocateNow
+));
+```
+
+### Creating User Space Regions
+
+```cpp
+// Allocate in process address space
+auto* region = TRY(address_space.allocate_region(
+    RandomizeVirtualAddress::No,
+    VirtualAddress(0x1000000),
+    size,
+    PAGE_SIZE, // alignment
+    "heap"sv,
+    PROT_READ | PROT_WRITE,
+    AllocationStrategy::Reserve
+));
+```
+
+### Mapping Physical Memory
+
+```cpp
+// Map MMIO region
+auto mmio_region = TRY(MM.allocate_mmio_kernel_region(
+    PhysicalAddress(device_address),
+    device_size,
+    "DeviceMMIO"sv,
+    Region::Access::ReadWrite,
+    MemoryType::IO
+));
+```
+
+## Related Files
+
+- `Kernel/Memory/MemoryManager.{h,cpp}` - Core memory manager
+- `Kernel/Memory/AddressSpace.{h,cpp}` - Per-process address spaces  
+- `Kernel/Memory/Region.{h,cpp}` - Virtual memory regions
+- `Kernel/Memory/VMObject.{h,cpp}` - Memory object abstraction
+- `Kernel/Memory/PhysicalRAMPage.{h,cpp}` - Physical page tracking
+- `Kernel/Arch/PageDirectory.h` - Architecture-specific page tables

@@ -1,0 +1,407 @@
+---
+title: Building Ladybird Browser
+description: Build the Ladybird web browser from SerenityOS
+---
+
+<Note>
+The Ladybird browser project has moved to [LadybirdBrowser/ladybird](https://github.com/LadybirdBrowser/ladybird). This version is kept as a developer convenience for testing LibWeb and LibJS libraries included with SerenityOS.
+</Note>
+
+## Prerequisites
+
+Ladybird requires:
+- **Qt6** development packages
+- **C++26** capable compiler (g++-14 or clang-17 minimum)
+
+<Tabs>
+  <Tab title="Debian/Ubuntu">
+    ```bash
+    sudo apt install build-essential cmake libgl1-mesa-dev ninja-build \
+      qt6-base-dev qt6-tools-dev-tools ccache
+    ```
+
+    For Ubuntu 20.04 and above, install Qt6 Wayland:
+    ```bash
+    sudo apt install qt6-wayland
+    ```
+  </Tab>
+
+  <Tab title="Arch Linux/Manjaro">
+    ```bash
+    sudo pacman -S --needed base-devel cmake libgl ninja qt6-base \
+      qt6-tools qt6-wayland ccache
+    ```
+  </Tab>
+
+  <Tab title="Fedora">
+    ```bash
+    sudo dnf install cmake libglvnd-devel ninja-build qt6-qtbase-devel \
+      qt6-qttools-devel qt6-qtwayland-devel ccache
+    ```
+  </Tab>
+
+  <Tab title="openSUSE">
+    ```bash
+    sudo zypper install cmake libglvnd-devel ninja qt6-base-devel \
+      qt6-tools-devel qt6-wayland-devel ccache
+    ```
+  </Tab>
+
+  <Tab title="macOS">
+    <Warning>
+    Xcode 14.3 or later is required. Earlier 14.x versions may crash during build.
+    </Warning>
+
+    ```bash
+    xcode-select --install
+    brew install cmake ninja ccache
+    ```
+
+    For Qt chrome on macOS:
+    ```bash
+    brew install qt
+    ```
+  </Tab>
+
+  <Tab title="NixOS/Nix">
+    ```bash
+    nix develop .#ladybird
+    
+    # With custom entrypoint
+    nix develop .#ladybird --command bash
+    ```
+
+    Legacy nix-shell:
+    ```bash
+    nix-shell Ladybird
+    ```
+  </Tab>
+
+  <Tab title="OpenIndiana">
+    <Note>
+    OpenIndiana's GCC 11 is too old. Use Clang 17 instead.
+    </Note>
+
+    ```bash
+    pfexec pkg install cmake ninja clang-17 libglvnd qt6
+    ```
+  </Tab>
+
+  <Tab title="Haiku">
+    ```bash
+    pkgman install cmake ninja cmd:python3 qt6_base_devel \
+      qt6_tools_devel openal_devel
+    ```
+  </Tab>
+
+  <Tab title="Windows">
+    <Warning>
+    WSL2/WSLg are preferred. MinGW/MSYS2 and native Windows builds are not officially supported.
+    </Warning>
+
+    Follow the [WSL2 setup guide](/building/windows), then use the Linux instructions.
+  </Tab>
+</Tabs>
+
+## Building with serenity.sh
+
+The simplest way to build Ladybird:
+
+<CodeGroup>
+```bash Run Ladybird
+./Meta/serenity.sh run lagom ladybird
+```
+
+```bash Debug with GDB
+./Meta/serenity.sh gdb lagom ladybird
+```
+</CodeGroup>
+
+### Browser Chrome
+
+The build uses different browser chromes depending on platform:
+
+<Tabs>
+  <Tab title="macOS">
+    **AppKit** - Native macOS chrome
+  </Tab>
+
+  <Tab title="Linux/Others">
+    **Qt** - Cross-platform Qt chrome
+  </Tab>
+</Tabs>
+
+### Enabling Qt Chrome
+
+To build the Qt chrome on platforms where it's not default:
+
+```bash
+cmake -S Meta/Lagom -B Build/lagom -DENABLE_QT=ON
+```
+
+To disable Qt chrome:
+```bash
+cmake -S Meta/Lagom -B Build/lagom -DENABLE_QT=OFF
+```
+
+## Disabling Ladybird
+
+<Warning>
+Running Ladybird from `serenity.sh` changes the CMake cache to always build LibWeb and Ladybird for Lagom.
+</Warning>
+
+To restore the default behavior (only build code generators and tools):
+
+```bash
+cmake -S Meta/Lagom -B Build/lagom \
+  -DENABLE_LAGOM_LADYBIRD=OFF \
+  -DENABLE_LAGOM_LIBWEB=OFF \
+  -DBUILD_LAGOM=OFF
+```
+
+## Custom CMake Build
+
+For packaging or standalone builds:
+
+<Steps>
+  <Step title="Configure build">
+    ```bash
+    cmake -GNinja -S Ladybird -B Build/ladybird
+    ```
+
+    <Note>
+    You may need to specify a suitable compiler:
+    ```bash
+    cmake -GNinja -S Ladybird -B Build/ladybird \
+      -DCMAKE_CXX_COMPILER=clang++-19 \
+      -DCMAKE_C_COMPILER=clang-19
+    ```
+    </Note>
+  </Step>
+
+  <Step title="Build">
+    ```bash
+    cmake --build Build/ladybird
+    ```
+  </Step>
+
+  <Step title="Run">
+    <Tabs>
+      <Tab title="Using Ninja">
+        ```bash
+        ninja -C Build/ladybird run
+        ```
+
+        Debug mode:
+        ```bash
+        ninja -C Build/ladybird debug
+        ```
+      </Tab>
+
+      <Tab title="Direct (Linux)">
+        ```bash
+        ./Build/ladybird/bin/Ladybird
+        ```
+      </Tab>
+
+      <Tab title="Direct (macOS)">
+        ```bash
+        open -W --stdout $(tty) --stderr $(tty) \
+          ./Build/ladybird/bin/Ladybird.app
+        
+        # With arguments:
+        open -W --stdout $(tty) --stderr $(tty) \
+          ./Build/ladybird/bin/Ladybird.app \
+          --args https://ladybird.dev
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Install (optional)">
+    ```bash
+    cmake --install Build/ladybird --prefix /usr/local
+    ```
+
+    <Info>
+    Install rules are defined in `Ladybird/cmake/InstallRules.cmake`.
+    </Info>
+  </Step>
+</Steps>
+
+## Resource Files
+
+<Warning>
+Ladybird requires resource files from `serenity/Base/res` for icons, fonts, and theming.
+</Warning>
+
+The `serenity.sh` script handles resource paths automatically. For custom builds:
+
+- Use ninja rules (`ninja run`, `ninja debug`)
+- Or install Ladybird with CMake install rules
+- Or manually set resource paths when running the binary
+
+## Experimental GN Build
+
+<Note>
+The GN build is experimental and maintained on a best-effort basis.
+</Note>
+
+Benefits:
+- More compact ninja rules
+- Potentially faster builds
+- Support for host and cross-targets in the same build directory
+
+See the [GN build instructions](../Meta/gn/README.md) for details.
+
+## Platform-Specific Notes
+
+### OpenIndiana
+
+Set CMake variables for Qt6 and Clang:
+
+```bash
+CMAKE_PREFIX_PATH=/usr/lib/qt/6.2/lib/amd64/cmake \
+  cmake -GNinja -S Ladybird -B Build/ladybird \
+  -DCMAKE_C_COMPILER=/usr/bin/clang \
+  -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+
+cmake --build Build/ladybird
+
+# Run with XDG_RUNTIME_DIR set
+XDG_RUNTIME_DIR=/var/tmp ninja -C Build/ladybird run
+```
+
+<Info>
+Replace `6.2` with your installed Qt version.
+</Info>
+
+### Haiku
+
+No special configuration needed:
+
+```bash
+cmake -GNinja -S Ladybird -B Build/ladybird
+cmake --build Build/ladybird
+ninja -C Build/ladybird run
+```
+
+## Debugging
+
+### CLion
+
+<Steps>
+  <Step title="Build with debug symbols">
+    Edit `Meta/CMake/lagom_compile_options.cmake`:
+    - Change `-O2` to `-O0`
+    - macOS: Change `-g1` to `-g`
+    - Linux: Change `-g1` to `-ggdb3`
+  </Step>
+
+  <Step title="Run Ladybird">
+    ```bash
+    ./Meta/serenity.sh run lagom ladybird
+    ```
+  </Step>
+
+  <Step title="Attach debugger">
+    In CLion:
+    1. **Run → Attach to Process**
+    2. Filter for `WebContent`
+    3. Attach
+
+    <Info>
+    For layout/rendering issues, attach to the WebContent process.
+    </Info>
+  </Step>
+</Steps>
+
+### Xcode (macOS)
+
+<Steps>
+  <Step title="Generate Xcode project">
+    <Tabs>
+      <Tab title="Compatible with serenity.sh">
+        ```bash
+        cmake -GXcode -S Meta/Lagom -B Build/lagom \
+          -DBUILD_LAGOM=ON -DENABLE_LAGOM_LADYBIRD=ON
+        ```
+      </Tab>
+
+      <Tab title="Standalone">
+        ```bash
+        cmake -GXcode -S Ladybird -B Build/ladybird
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Open in Xcode">
+    ```bash
+    open Build/lagom/ladybird.xcodeproj
+    # or
+    open Build/ladybird/ladybird.xcodeproj
+    ```
+  </Step>
+
+  <Step title="Create scheme">
+    Create a scheme for the Ladybird app bundle target.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build fails with C++26 errors">
+    Verify compiler version:
+    ```bash
+    g++ --version  # Should be 14+
+    clang++ --version  # Should be 17+
+    ```
+
+    Install newer compiler if needed.
+  </Accordion>
+
+  <Accordion title="Qt6 not found">
+    Ensure Qt6 development packages are installed:
+    ```bash
+    # Debian/Ubuntu
+    sudo apt install qt6-base-dev qt6-tools-dev-tools
+    
+    # macOS
+    brew install qt
+    ```
+  </Accordion>
+
+  <Accordion title="Resource files missing">
+    Use the ninja rules:
+    ```bash
+    ninja -C Build/ladybird run
+    ```
+
+    Or ensure `serenity/Base/res` is accessible to the binary.
+  </Accordion>
+
+  <Accordion title="Xcode 14.2 or older crashes">
+    Update to Xcode 14.3+:
+    ```bash
+    xcode-select --install
+    ```
+
+    Or install Homebrew compiler:
+    ```bash
+    brew install llvm@18
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Main Project" icon="browser" href="https://github.com/LadybirdBrowser/ladybird">
+    Visit the official Ladybird browser project
+  </Card>
+  <Card title="Advanced Build Options" icon="gear" href="/building/advanced">
+    Explore CMake options and customization
+  </Card>
+</CardGroup>

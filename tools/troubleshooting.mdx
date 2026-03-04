@@ -1,0 +1,298 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for building and running SerenityOS
+---
+
+This guide covers common issues you might encounter when building or running SerenityOS.
+
+## Building SerenityOS
+
+### CMake is Outdated
+
+<Accordion title="Error: CMake version too old">
+**Problem:** CMake fails to configure the build.
+
+**Solution:** Ensure CMake version is >= 3.16:
+
+```bash
+cmake --version
+```
+
+If your system doesn't provide a suitable version, download a binary release from the [CMake website](https://cmake.org/download).
+</Accordion>
+
+### QEMU is Missing or Outdated
+
+<Accordion title="Error: QEMU version too old">
+**Problem:** QEMU is not found or version is too old.
+
+**Solution:** Ensure QEMU version is >= 5:
+
+```bash
+qemu-system-i386 -version
+```
+
+Install QEMU from your package manager or build it:
+
+```bash
+Toolchain/BuildQemu.sh
+```
+</Accordion>
+
+### Toolchain is Outdated
+
+<Accordion title="Error: Compiler version mismatch">
+**Problem:** You see an error like:
+
+```
+CMake Error at CMakeLists.txt:28 (message):
+  GNU version (13.1.0) does not match expected compiler version (13.2.0).
+
+  Please rebuild the GNU Toolchain
+```
+
+Or:
+
+```
+Your toolchain has an old version of binutils installed.
+    installed version: "GNU ld (GNU Binutils) 2.40"
+    expected version:  "GNU ld (GNU Binutils) 2.41"
+Please run Meta/serenity.sh rebuild-toolchain x86_64 to update it.
+```
+
+**Solution:** Rebuild the toolchain:
+
+```bash
+Meta/serenity.sh rebuild-toolchain x86_64
+```
+
+If CMake still shows errors after rebuilding, start with a fresh build:
+
+```bash
+Meta/serenity.sh rebuild x86_64
+```
+</Accordion>
+
+<Tip>
+The toolchain is updated every few months to use the latest compilers and build tools. When an update is due, the build will fail with a clear error message.
+</Tip>
+
+### GCC is Missing or Outdated
+
+<Accordion title="Error: GCC version too old">
+**Problem:** Your system GCC is too old.
+
+**Solution:** Ensure GCC version is >= 14:
+
+```bash
+gcc --version
+```
+
+If your GCC binary has a different name, specify it when running CMake:
+
+```bash
+cmake ../.. -GNinja \
+  -DCMAKE_C_COMPILER=gcc-14 \
+  -DCMAKE_CXX_COMPILER=g++-14
+```
+</Accordion>
+
+### Legacy Renegotiation Disabled
+
+<Accordion title="SSL/TLS connection issues">
+**Problem:** SSL/TLS connections fail during build.
+
+**Solution:** Ensure `/etc/ssl/openssl.cnf` has the following options:
+
+```ini
+[openssl_init]
+ssl_conf = ssl_sect
+
+[ssl_sect]
+system_default = system_default_sect
+
+[system_default_sect]
+MinProtocol = TLSv1.2
+CipherString = DEFAULT@SECLEVEL=1
+Options = UnsafeLegacyRenegotiation
+```
+</Accordion>
+
+### Build Problems After git pull
+
+<Accordion title="Build broken after update">
+**Problem:** Build fails after pulling latest changes.
+
+**Solution:**
+
+1. Rebuild the toolchain:
+   ```bash
+   Meta/serenity.sh rebuild-toolchain x86_64
+   ```
+
+2. If that doesn't help, try with a clean repo:
+   ```bash
+   Meta/serenity.sh rebuild x86_64
+   ```
+
+3. If still broken, ask in the `#build-problems` channel on Discord.
+
+<Tip>
+If it builds on CI, it should build for you too. A clean rebuild usually fixes the issue.
+</Tip>
+</Accordion>
+
+## Running SerenityOS
+
+### The VM is Really Slow
+
+<Accordion title="Poor VM performance">
+**Problem:** QEMU runs very slowly.
+
+**Solution:**
+
+**Linux:** Ensure KVM is available:
+
+```bash
+ls -l /dev/kvm
+```
+
+The run script automatically enables KVM if `/dev/kvm` exists and is readable/writable by your user.
+
+**Windows:** Enable WHPX (Windows Hypervisor Platform) acceleration in Windows Features.
+</Accordion>
+
+### Slow Boot on HiDPI Systems
+
+<Accordion title="Slow boot on Windows with >100% scaling">
+**Problem:** Boot phase crawls on Windows with display scaling >100%.
+
+**Solution:**
+
+The default display backend (`SERENITY_QEMU_DISPLAY_BACKEND=sdl,gl=off`) does not have this problem. If you're affected:
+
+1. Open properties of `C:\Program Files\qemu\qemu-system-x86_64.exe`
+2. Go to Compatibility tab
+3. Change DPI settings to force scaling by the System
+4. Adjust the setting at the bottom of the window
+
+The QEMU window will render at normal size with acceptable emulation speeds.
+
+<Warning>
+This is tracked as issue [#7657](https://github.com/SerenityOS/serenity/issues/7657).
+</Warning>
+</Accordion>
+
+### Boot Failures
+
+<Accordion title="Error: Kernel Image too big for memory slot">
+**Problem:** Boot fails with "Error: Kernel Image too big for memory slot. Halting!"
+
+**Solution:**
+
+This means the kernel has grown too large. This is a known issue that requires attention:
+
+1. Contact the team on Discord server
+2. Open a GitHub issue
+3. Try reverting recent changes to see if that helps temporarily
+</Accordion>
+
+<Accordion title="Error: Computer does not support long mode">
+**Problem:** "Your computer does not support long mode (64-bit mode). Halting!"
+
+**Solution:**
+
+- **Bare metal:** Your machine doesn't support x86_64 extensions
+- **VirtualBox:** Enable x64 virtualization mode in VM settings
+- **QEMU:** Don't use `qemu-system-i386`, which doesn't support x86_64. Use `qemu-system-x86_64` instead.
+</Accordion>
+
+<Accordion title="Error: Computer does not support PAE">
+**Problem:** "Your computer does not support PAE. Halting!"
+
+**Solution:**
+
+- **Bare metal:** Your CPU is too old to boot SerenityOS
+- **VirtualBox:** Enable PAE/NX in VM settings
+- **QEMU:** The CPU model configuration is not exposing PAE. Check [QEMU CPU models](https://qemu-project.gitlab.io/qemu/system/qemu-cpu-models.html)
+</Accordion>
+
+<Accordion title="Error: KVM doesn't support guest debugging">
+**Problem:** Boot fails with KVM debugging error.
+
+**Solution:**
+
+1. Update host kernel to at least version 5.10 (required for `KVM_CAP_SET_GUEST_DEBUG`)
+2. Ensure your distro has QEMU debug features enabled
+3. Or disable KVM debugging:
+   ```bash
+   SERENITY_DISABLE_GDB_SOCKET=1 ninja run
+   ```
+</Accordion>
+
+## Frequently Asked Questions
+
+### Will SerenityOS support X?
+
+Maybe. Maybe not. There is no plan. If you want to see something happen, you can implement it yourself!
+
+### Where are the ISO images?
+
+<Warning>
+There are no ISO images. SerenityOS does not cater to non-technical users.
+</Warning>
+
+To run SerenityOS, you need to build it from source. See the [Build Instructions](/building/overview).
+
+### Does SerenityOS have a package manager?
+
+<Accordion title="Package management in SerenityOS">
+**Short answer:** No, SerenityOS does not have a "Linux-style" package manager.
+
+**Why not?**
+
+- SerenityOS uses a monorepo approach - all software is built together
+- The ABI (library symbols, syscall interfaces) has **no stability guarantee**
+- The ABI can change at any moment
+- POSIX C library API remains relatively stable
+- No need for binary packages when everything is built from source
+
+**What about third-party software?**
+
+Use **Ports** in the `Ports/` directory:
+
+- Ports are third-party software that runs on SerenityOS
+- Each port comes with an install script
+- Ports are **always built from source**
+- Currently, ports should be cross-compiled on the host
+- Compiling ports on SerenityOS itself is possible but not recommended yet
+
+**Future plans:**
+
+The `pkg` tool may improve this workflow in the future. Join `#package-manager` on Discord if you want to contribute.
+
+**Excluding components:**
+
+You can exclude SerenityOS components at compile time. See [Advanced Build Instructions](/building/advanced).
+</Accordion>
+
+### Why implement X instead of using library Y?
+
+The SerenityOS project maximizes hackability, accountability, and fun by implementing everything ourselves.
+
+## Getting Help
+
+<Tip>
+If you can't find a solution here:
+
+- Ask in `#build-problems` on Discord
+- Search [existing GitHub issues](https://github.com/SerenityOS/serenity/issues)
+- Open a new issue with details about your problem
+</Tip>
+
+## See Also
+
+- [Building SerenityOS](/building/overview)
+- [Advanced Build Instructions](/building/advanced)
+- [Debugging](/tools/debugging)
+- [Running Tests](/development/testing)

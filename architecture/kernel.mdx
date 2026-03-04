@@ -1,0 +1,410 @@
+---
+title: Kernel Architecture
+description: In-depth look at the SerenityOS kernel design and implementation
+---
+
+The SerenityOS kernel is a modern, 64-bit Unix-like kernel with pre-emptive multi-threading, comprehensive hardware support, and security features. While microkernel-inspired in design philosophy, it implements a monolithic architecture for performance.
+
+## Kernel Overview
+
+<Info>
+**Key Features:**
+- Modern 64-bit architecture (x86-64, aarch64, riscv64)
+- Pre-emptive multi-threading with SMP support
+- Virtual memory with hardware protection
+- Comprehensive device driver framework
+- Full network stack implementation
+- Multiple filesystem support
+</Info>
+
+## Directory Structure
+
+The kernel source is organized by subsystem:
+
+```bash
+Kernel/
+├── Arch/              # Architecture-specific implementations
+│   ├── x86_64/        # Intel/AMD 64-bit
+│   ├── aarch64/       # ARM 64-bit
+│   └── riscv64/       # RISC-V 64-bit
+├── API/               # Kernel API definitions
+│   ├── POSIX/         # POSIX-compatible structures
+│   └── FileSystem/    # Filesystem-related APIs
+├── Boot/              # Boot-time initialization
+├── Bus/               # Bus subsystems
+│   ├── PCI/           # PCI/PCIe bus support
+│   ├── USB/           # USB stack
+│   ├── I2C/           # I2C bus
+│   ├── SerialIO/      # Serial communication
+│   └── VirtIO/        # VirtIO devices
+├── Devices/           # Device drivers
+│   ├── GPU/           # Graphics devices
+│   ├── Storage/       # Storage controllers
+│   ├── Audio/         # Sound cards
+│   ├── Input/         # Input devices
+│   ├── Serial/        # Serial devices
+│   ├── TTY/           # Terminal devices
+│   └── Generic/       # Generic devices
+├── FileSystem/        # Filesystem implementations
+│   ├── Ext2FS/        # Ext2 filesystem
+│   ├── FATFS/         # FAT filesystem
+│   ├── ISO9660FS/     # ISO 9660 (CD-ROM)
+│   ├── ProcFS/        # /proc virtual filesystem
+│   ├── SysFS/         # /sys virtual filesystem
+│   ├── DevPtsFS/      # /dev/pts (pseudoterminals)
+│   ├── Plan9FS/       # Plan 9 network filesystem
+│   └── RAMFS/         # RAM-based filesystem
+├── Firmware/          # Firmware interfaces
+│   ├── ACPI/          # ACPI support
+│   └── DeviceTree/    # Device tree for ARM/RISC-V
+├── Heap/              # Kernel heap management
+├── Interrupts/        # Interrupt handling
+├── Library/           # Kernel library functions
+├── Locking/           # Synchronization primitives
+├── Memory/            # Memory management
+├── Net/               # Network stack
+│   ├── IPv4/          # IPv4 implementation
+│   ├── IPv6/          # IPv6 implementation
+│   ├── TCP/           # TCP protocol
+│   └── UDP/           # UDP protocol
+├── Prekernel/         # Early boot code
+├── Security/          # Security subsystems
+├── Syscalls/          # System call implementations
+├── Tasks/             # Process and thread management
+└── Time/              # Time and timer management
+```
+
+## Core Subsystems
+
+### Process and Thread Management
+
+Located in `Kernel/Tasks/`, this subsystem handles:
+
+<Accordion title="Process Management">
+- **Process Structure**: Each process has isolated address space, file descriptor table, and security context
+- **Fork/Exec Model**: Standard Unix process creation via `fork()` and `execve()`
+- **Copy-on-Write**: Efficient memory sharing between parent and child processes
+- **Process Groups**: Session and process group management
+- **Capabilities**: Limited privilege model for fine-grained access control
+</Accordion>
+
+<Accordion title="Thread Management">
+- **Pre-emptive Scheduling**: Fair scheduler with priority support
+- **SMP Support**: Multi-processor thread distribution
+- **Thread Primitives**: Kernel threads, user threads, and futexes
+- **Synchronization**: Mutexes, semaphores, and spinlocks
+- **Sleep/Wake**: Efficient thread blocking and wakeup mechanisms
+</Accordion>
+
+### Memory Management
+
+The memory subsystem in `Kernel/Memory/` provides:
+
+<CodeGroup>
+```cpp VMObject (Virtual Memory Object)
+// Base class for all memory-backed objects
+class VMObject {
+    // Represents a source of memory pages
+    // Can be anonymous, file-backed, or device-mapped
+};
+
+class AnonymousVMObject : public VMObject {
+    // RAM-backed memory (heap, stack, etc.)
+};
+
+class InodeVMObject : public VMObject {
+    // File-backed memory (mmap'd files)
+};
+```
+
+```cpp Region (Memory Region)
+class Region {
+    // Maps a VMObject into an address space
+    VirtualRange range;         // Virtual address range
+    RefPtr<VMObject> vmobject;  // Backing memory
+    RegionAccess access;        // Read/Write/Execute permissions
+};
+```
+
+```cpp AddressSpace (Per-Process)
+class AddressSpace {
+    // Each process has one AddressSpace
+    Vector<Region*> regions;    // All mapped regions
+    PageDirectory page_dir;     // Architecture-specific page tables
+};
+```
+</CodeGroup>
+
+<Info>
+**Memory Protection Features:**
+- NX (No-Execute) bit enforcement
+- SMEP (Supervisor Mode Execution Prevention)
+- SMAP (Supervisor Mode Access Prevention)
+- KASLR (Kernel Address Space Layout Randomization)
+- W^X (Write XOR Execute) policy
+</Info>
+
+### Filesystem Layer
+
+The VFS (Virtual Filesystem) architecture in `Kernel/FileSystem/`:
+
+```
+┌────────────────────────────────────────────┐
+│         VFS (Virtual Filesystem)           │
+├────────────────────────────────────────────┤
+│  File Descriptor Table | Inode Cache       │
+├────────────────────────────────────────────┤
+│  Filesystem Implementations:               │
+│  ┌──────┬──────┬──────┬──────┬──────┐    │
+│  │ Ext2 │ FAT  │ Proc │ Sys  │ Tmp  │    │
+│  └──────┴──────┴──────┴──────┴──────┘    │
+└────────────────────────────────────────────┘
+```
+
+<Tabs>
+  <Tab title="VFS Core">
+    - **Inode**: Represents a filesystem object (file, directory, device)
+    - **Custody**: Represents a cached path in the filesystem tree
+    - **FileDescription**: Open file handle with position and flags
+    - **Mount**: Filesystem mount point management
+  </Tab>
+  
+  <Tab title="Supported Filesystems">
+    - **Ext2**: Primary read/write filesystem
+    - **FAT**: DOS/Windows filesystem support
+    - **ISO9660**: Read-only CD-ROM filesystem
+    - **ProcFS**: Process information (`/proc`)
+    - **SysFS**: Kernel/system information (`/sys`)
+    - **DevPtsFS**: Pseudoterminal devices
+    - **TmpFS/RAMFS**: In-memory filesystems
+    - **Plan9FS**: Network filesystem client
+  </Tab>
+</Tabs>
+
+### Device Driver Framework
+
+Device drivers in `Kernel/Devices/` follow a class hierarchy:
+
+```cpp
+Device (base class)
+├── CharacterDevice (byte-stream devices)
+│   ├── TTYDevice (terminals)
+│   │   ├── VirtualConsole
+│   │   └── PTYDevice
+│   ├── NullDevice (/dev/null)
+│   ├── ZeroDevice (/dev/zero)
+│   └── RandomDevice (/dev/random)
+├── BlockDevice (block-oriented devices)
+│   ├── StorageDevice
+│   │   ├── AHCIController (SATA)
+│   │   ├── NVMeController (NVMe)
+│   │   └── RamdiskDevice
+└── GPUDevice (graphics devices)
+    ├── BochsGraphicsAdapter
+    ├── VirtIOGPU
+    ├── VMWareGraphicsAdapter
+    └── IntelGraphicsDevice
+```
+
+### Network Stack
+
+The network implementation in `Kernel/Net/` includes:
+
+<AccordionGroup>
+  <Accordion title="Network Layers">
+    **Link Layer:**
+    - Network device abstraction
+    - Ethernet frame handling
+    - ARP (Address Resolution Protocol)
+    
+    **Network Layer:**
+    - IPv4 routing and forwarding
+    - IPv6 support (growing)
+    - ICMP (ping, etc.)
+    
+    **Transport Layer:**
+    - TCP with congestion control
+    - UDP datagram support
+    - Socket abstraction
+    
+    **Application Support:**
+    - BSD socket API
+    - Unix domain sockets
+    - Socket options and control
+  </Accordion>
+  
+  <Accordion title="Network Devices">
+    Supported network adapters:
+    - E1000 (Intel Gigabit Ethernet)
+    - RTL8139 (Realtek)
+    - NE2000 (legacy)
+    - VirtIO Network
+  </Accordion>
+</AccordionGroup>
+
+### Graphics Subsystem
+
+The graphics architecture manages framebuffers and display hardware:
+
+<Info>
+See the [Graphics Subsystem Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/Kernel/GraphicsSubsystem.md) for comprehensive details.
+</Info>
+
+**Key Concepts:**
+- **DisplayConnector**: Abstraction for display outputs (`/dev/gpu/connectorX`)
+- **Framebuffer Management**: Direct VRAM access via `mmap()`
+- **Virtual Memory Tricks**: Seamless switching between console and graphics modes
+- **GPU Drivers**: Support for multiple graphics adapters
+
+## System Call Interface
+
+System calls in `Kernel/Syscalls/` provide the kernel API:
+
+<CodeGroup>
+```cpp Process Management
+fork(), execve(), waitpid()
+exit(), kill(), getpid()
+getuid(), setuid(), getgid(), setgid()
+pledge(), unveil()  // Security
+```
+
+```cpp Memory Management
+mmap(), munmap(), mprotect()
+brk(), sbrk()
+set_mmap_name()  // SerenityOS extension
+```
+
+```cpp File Operations
+open(), close(), read(), write()
+ioctl(), fcntl(), stat()
+chdir(), getcwd(), readlink()
+```
+
+```cpp Networking
+socket(), bind(), listen(), accept()
+connect(), send(), recv()
+setsockopt(), getsockopt()
+```
+</CodeGroup>
+
+## Security Features
+
+<CardGroup cols={2}>
+  <Card title="pledge() System Call" icon="lock">
+    Inspired by OpenBSD's `pledge()`, restricts what system calls a process can make. Once pledged, a process cannot regain privileges.
+  </Card>
+  
+  <Card title="unveil() System Call" icon="eye">
+    Restricts filesystem access to specific paths. A process can only access unveiled paths after calling `unveil()`.
+  </Card>
+  
+  <Card title="W^X Memory" icon="shield">
+    Enforces that memory pages are either writable or executable, never both. Prevents code injection attacks.
+  </Card>
+  
+  <Card title="ASLR" icon="shuffle">
+    Randomizes memory layout of kernel and userspace processes to prevent exploitation.
+  </Card>
+</CardGroup>
+
+## Architecture Abstraction
+
+The `Kernel/Arch/` directory isolates platform-specific code:
+
+<Tabs>
+  <Tab title="x86-64">
+    - **Boot**: Multiboot2, UEFI boot support
+    - **MMU**: 4-level page tables, PAE
+    - **Interrupts**: IDT, APIC, I/O APIC
+    - **Context Switch**: CPU state save/restore
+    - **Syscalls**: SYSCALL/SYSRET instructions
+  </Tab>
+  
+  <Tab title="aarch64">
+    - **Boot**: Device tree support
+    - **MMU**: ARMv8 page tables
+    - **Interrupts**: GIC (Generic Interrupt Controller)
+    - **Context Switch**: ARM register state
+    - **Syscalls**: SVC instruction
+  </Tab>
+  
+  <Tab title="riscv64">
+    - **Boot**: Device tree, OpenSBI
+    - **MMU**: Sv39/Sv48 page tables
+    - **Interrupts**: PLIC, CLINT
+    - **Context Switch**: RISC-V registers
+    - **Syscalls**: ECALL instruction
+  </Tab>
+</Tabs>
+
+## Locking and Synchronization
+
+The kernel provides various synchronization primitives in `Kernel/Locking/`:
+
+```cpp
+// Spinlocks - for short critical sections
+Spinlock<LockType::Spinlock> m_lock;
+
+// Mutexes - for longer critical sections (can sleep)
+Mutex m_mutex;
+
+// Intrusive lists - OOM-safe data structures
+IntrusiveList<&Process::m_list_node> m_processes;
+```
+
+<Info>
+See [Kernel Locking Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/Kernel/AHCILocking.md) for locking patterns and best practices.
+</Info>
+
+## Interrupt Handling
+
+The interrupt subsystem in `Kernel/Interrupts/` handles:
+
+- **Hardware Interrupts**: Timer, keyboard, disk, network
+- **Software Interrupts**: System calls, exceptions
+- **IRQ Routing**: APIC, I/O APIC configuration
+- **Deferred Processing**: Bottom-half handlers for complex operations
+
+## Kernel Debugging
+
+Debugging facilities:
+
+- **Debug Macros**: Per-subsystem debug output (`#define XYZ_DEBUG`)
+- **Kernel Symbols**: Symbol resolution for stack traces
+- **Profiling**: Built-in kernel profiler
+- **Assertions**: `VERIFY()` and `MUST()` for invariant checking
+- **Sanitizers**: UBSAN support for catching undefined behavior
+
+## Performance Considerations
+
+<AccordionGroup>
+  <Accordion title="Zero-Copy Operations">
+    - Direct memory mapping for framebuffers
+    - Scatter-gather I/O for network and disk
+    - Shared memory regions between processes
+  </Accordion>
+  
+  <Accordion title="Caching">
+    - Page cache for filesystem I/O
+    - Inode cache for directory lookups
+    - Slab allocator for kernel objects
+  </Accordion>
+  
+  <Accordion title="Asynchronous I/O">
+    - Non-blocking I/O operations
+    - select()/poll() for event multiplexing
+    - Efficient interrupt handling
+  </Accordion>
+</AccordionGroup>
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Containers Documentation" icon="box" href="/source/Documentation/Kernel/Containers.md">
+    Learn about intrusive lists and kernel data structures
+  </Card>
+  
+  <Card title="Development Guidelines" icon="code" href="/source/Documentation/Kernel/DevelopmentGuidelines.md">
+    Kernel coding standards and best practices
+  </Card>
+</CardGroup>

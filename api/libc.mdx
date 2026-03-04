@@ -1,0 +1,572 @@
+---
+title: 'LibC'
+description: 'SerenityOS POSIX-compliant C standard library implementation'
+icon: 'c'
+---
+
+## Overview
+
+LibC is SerenityOS's implementation of the C standard library, providing POSIX-compliant interfaces for system calls, I/O, memory management, and more. It serves as the foundation for both C and C++ programs running on SerenityOS.
+
+<Info>
+LibC wraps SerenityOS kernel syscalls and provides a familiar POSIX interface for application development.
+</Info>
+
+## Standard I/O
+
+### File Operations
+
+Standard file I/O using FILE* streams.
+
+```c
+#include <stdio.h>
+
+// Open file
+FILE* file = fopen("/path/to/file", "r");
+if (!file) {
+    perror("fopen");
+    return 1;
+}
+
+// Read data
+char buffer[1024];
+size_t bytes = fread(buffer, 1, sizeof(buffer), file);
+
+// Write data
+fprintf(file, "Hello, World!\n");
+
+// Close file
+fclose(file);
+```
+
+<CodeGroup>
+```c Reading Files
+// Read line by line
+FILE* file = fopen("input.txt", "r");
+char* line = NULL;
+size_t len = 0;
+ssize_t read;
+
+while ((read = getline(&line, &len, file)) != -1) {
+    printf("Line: %s", line);
+}
+
+free(line);
+fclose(file);
+```
+
+```c Writing Files
+// Write formatted output
+FILE* file = fopen("output.txt", "w");
+fprintf(file, "Counter: %d\n", 42);
+fprintf(file, "Name: %s\n", "SerenityOS");
+fclose(file);
+```
+
+```c Binary I/O
+struct Data {
+    int id;
+    char name[32];
+};
+
+struct Data data = { 1, "Example" };
+
+FILE* file = fopen("data.bin", "wb");
+fwrite(&data, sizeof(data), 1, file);
+fclose(file);
+```
+</CodeGroup>
+
+### Standard Streams
+
+Pre-defined file streams for standard I/O.
+
+<ParamField path="stdin" type="FILE*">
+  Standard input stream (file descriptor 0)
+</ParamField>
+
+<ParamField path="stdout" type="FILE*">
+  Standard output stream (file descriptor 1)
+</ParamField>
+
+<ParamField path="stderr" type="FILE*">
+  Standard error stream (file descriptor 2)
+</ParamField>
+
+```c
+// Print to stdout
+printf("Normal output\n");
+fprintf(stdout, "Explicit stdout\n");
+
+// Print to stderr
+fprintf(stderr, "Error message\n");
+
+// Read from stdin
+char input[256];
+fgets(input, sizeof(input), stdin);
+```
+
+### Formatted I/O
+
+```c
+// printf family
+printf("Integer: %d\n", 42);
+sprintf(buffer, "Formatted: %s", str);
+snprintf(buffer, size, "Safe: %d", value);
+
+// scanf family
+int value;
+scanf("%d", &value);
+sscanf("42 3.14", "%d %f", &i, &f);
+```
+
+## File System
+
+### Low-Level I/O
+
+Direct file descriptor operations.
+
+```c
+#include <fcntl.h>
+#include <unistd.h>
+
+// Open file
+int fd = open("/path/to/file", O_RDONLY);
+if (fd < 0) {
+    perror("open");
+    return 1;
+}
+
+// Read data
+char buffer[1024];
+ssize_t bytes = read(fd, buffer, sizeof(buffer));
+
+// Write data
+const char* msg = "Hello";
+write(fd, msg, strlen(msg));
+
+// Seek position
+lseek(fd, 0, SEEK_SET); // Beginning
+lseek(fd, 0, SEEK_END); // End
+
+// Close
+close(fd);
+```
+
+<Accordion title="Open Flags">
+- `O_RDONLY` - Read-only
+- `O_WRONLY` - Write-only
+- `O_RDWR` - Read and write
+- `O_CREAT` - Create if doesn't exist
+- `O_TRUNC` - Truncate to zero length
+- `O_APPEND` - Append to end
+- `O_NONBLOCK` - Non-blocking mode
+- `O_CLOEXEC` - Close on exec
+</Accordion>
+
+### Directory Operations
+
+```c
+#include <dirent.h>
+#include <sys/stat.h>
+
+// Open directory
+DIR* dir = opendir("/path/to/dir");
+if (!dir) {
+    perror("opendir");
+    return 1;
+}
+
+// Read entries
+struct dirent* entry;
+while ((entry = readdir(dir)) != NULL) {
+    printf("Name: %s\n", entry->d_name);
+}
+
+closedir(dir);
+
+// Create directory
+mkdir("/path/to/new/dir", 0755);
+
+// Remove directory
+rmdir("/path/to/dir");
+```
+
+### File Metadata
+
+```c
+#include <sys/stat.h>
+
+struct stat sb;
+if (stat("/path/to/file", &sb) == 0) {
+    printf("Size: %ld bytes\n", sb.st_size);
+    printf("Mode: %o\n", sb.st_mode);
+    
+    if (S_ISDIR(sb.st_mode)) {
+        printf("Is directory\n");
+    }
+    if (S_ISREG(sb.st_mode)) {
+        printf("Is regular file\n");
+    }
+}
+```
+
+## Memory Management
+
+### Dynamic Allocation
+
+```c
+#include <stdlib.h>
+#include <string.h>
+
+// Allocate memory
+void* ptr = malloc(1024);
+if (!ptr) {
+    fprintf(stderr, "Out of memory\n");
+    return 1;
+}
+
+// Allocate and zero
+void* ptr = calloc(10, sizeof(int)); // Array of 10 ints
+
+// Resize allocation
+ptr = realloc(ptr, 2048);
+
+// Free memory
+free(ptr);
+```
+
+<Info>
+**Memory Safety**: Always check malloc/calloc/realloc return values and free allocated memory to prevent leaks.
+</Info>
+
+### Memory Operations
+
+```c
+#include <string.h>
+
+// Copy memory
+memcpy(dest, src, size);
+
+// Move memory (handles overlap)
+memmove(dest, src, size);
+
+// Set memory
+memset(buffer, 0, size); // Zero memory
+memset(buffer, 0xFF, size); // Fill with 0xFF
+
+// Compare memory
+if (memcmp(buf1, buf2, size) == 0) {
+    // Buffers are equal
+}
+```
+
+## String Handling
+
+### String Operations
+
+```c
+#include <string.h>
+
+// Copy strings
+char dest[100];
+strcpy(dest, "Hello");
+strncpy(dest, src, sizeof(dest) - 1);
+dest[sizeof(dest) - 1] = '\0'; // Ensure null termination
+
+// Concatenate
+strcat(dest, " World");
+strncat(dest, str, sizeof(dest) - strlen(dest) - 1);
+
+// Compare
+if (strcmp(str1, str2) == 0) {
+    // Strings are equal
+}
+
+// Search
+char* pos = strchr(str, 'x'); // Find character
+char* sub = strstr(haystack, needle); // Find substring
+
+// Length
+size_t len = strlen(str);
+```
+
+<Accordion title="Safe String Functions">
+Always use the "n" variants with explicit size limits:
+```c
+// Unsafe
+strcpy(dest, src); // Buffer overflow risk!
+
+// Safe
+strncpy(dest, src, sizeof(dest) - 1);
+dest[sizeof(dest) - 1] = '\0';
+
+// Even better: use strlcpy if available
+strlcpy(dest, src, sizeof(dest));
+```
+</Accordion>
+
+### Character Classification
+
+```c
+#include <ctype.h>
+
+char c = 'A';
+
+if (isalpha(c))  // Letter
+if (isdigit(c))  // Digit
+if (isalnum(c))  // Letter or digit
+if (isspace(c))  // Whitespace
+if (isupper(c))  // Uppercase
+if (islower(c))  // Lowercase
+
+// Convert case
+char upper = toupper('a'); // 'A'
+char lower = tolower('A'); // 'a'
+```
+
+## Process Control
+
+### Process Management
+
+```c
+#include <unistd.h>
+#include <sys/wait.h>
+
+// Fork process
+pid_t pid = fork();
+if (pid == 0) {
+    // Child process
+    printf("I'm the child!\n");
+    exit(0);
+} else if (pid > 0) {
+    // Parent process
+    printf("Child PID: %d\n", pid);
+    
+    // Wait for child
+    int status;
+    waitpid(pid, &status, 0);
+    
+    if (WIFEXITED(status)) {
+        printf("Child exited: %d\n", WEXITSTATUS(status));
+    }
+}
+```
+
+### Program Execution
+
+```c
+#include <unistd.h>
+
+// Execute program (replaces current process)
+execl("/bin/ls", "ls", "-l", NULL);
+execlp("ls", "ls", "-l", NULL); // Search PATH
+
+char* args[] = { "ls", "-l", NULL };
+execv("/bin/ls", args);
+execvp("ls", args);
+
+// If exec returns, it failed
+perror("exec");
+```
+
+### Environment Variables
+
+```c
+#include <stdlib.h>
+
+// Get variable
+char* path = getenv("PATH");
+if (path) {
+    printf("PATH: %s\n", path);
+}
+
+// Set variable
+setenv("MY_VAR", "value", 1); // 1 = overwrite
+
+// Unset variable
+unsetenv("MY_VAR");
+```
+
+## Threading
+
+### POSIX Threads
+
+```c
+#include <pthread.h>
+
+void* thread_function(void* arg) {
+    int* value = (int*)arg;
+    printf("Thread received: %d\n", *value);
+    return NULL;
+}
+
+int main() {
+    pthread_t thread;
+    int arg = 42;
+    
+    // Create thread
+    pthread_create(&thread, NULL, thread_function, &arg);
+    
+    // Wait for completion
+    pthread_join(thread, NULL);
+    
+    return 0;
+}
+```
+
+### Mutexes
+
+```c
+#include <pthread.h>
+
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+int shared_counter = 0;
+
+void* increment(void* arg) {
+    for (int i = 0; i < 1000; i++) {
+        pthread_mutex_lock(&mutex);
+        shared_counter++;
+        pthread_mutex_unlock(&mutex);
+    }
+    return NULL;
+}
+```
+
+## Time & Signals
+
+### Time Functions
+
+```c
+#include <time.h>
+#include <sys/time.h>
+
+// Get current time
+time_t now = time(NULL);
+
+// Convert to string
+printf("Time: %s", ctime(&now));
+
+// Structured time
+struct tm* tm_info = localtime(&now);
+char buffer[80];
+strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", tm_info);
+printf("Formatted: %s\n", buffer);
+
+// High resolution time
+struct timespec ts;
+clock_gettime(CLOCK_REALTIME, &ts);
+printf("Seconds: %ld, Nanoseconds: %ld\n", ts.tv_sec, ts.tv_nsec);
+```
+
+### Signal Handling
+
+```c
+#include <signal.h>
+
+void signal_handler(int signum) {
+    printf("Caught signal %d\n", signum);
+    exit(1);
+}
+
+int main() {
+    // Install handler
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    
+    // Block signals
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
+    
+    return 0;
+}
+```
+
+## Networking
+
+### Sockets
+
+```c
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+// Create socket
+int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+// Server: bind and listen
+struct sockaddr_in addr = {
+    .sin_family = AF_INET,
+    .sin_port = htons(8080),
+    .sin_addr.s_addr = INADDR_ANY
+};
+bind(sock, (struct sockaddr*)&addr, sizeof(addr));
+listen(sock, 5);
+
+// Accept connections
+int client = accept(sock, NULL, NULL);
+
+// Client: connect
+connect(sock, (struct sockaddr*)&addr, sizeof(addr));
+
+// Send/receive
+send(sock, data, size, 0);
+recv(sock, buffer, size, 0);
+```
+
+## Error Handling
+
+### errno and perror
+
+```c
+#include <errno.h>
+#include <string.h>
+
+int fd = open("/nonexistent", O_RDONLY);
+if (fd < 0) {
+    // Check specific error
+    if (errno == ENOENT) {
+        fprintf(stderr, "File not found\n");
+    }
+    
+    // Print error message
+    perror("open");
+    
+    // Get error string
+    fprintf(stderr, "Error: %s\n", strerror(errno));
+    
+    return 1;
+}
+```
+
+<Accordion title="Common errno Values">
+- `ENOENT` - No such file or directory
+- `EACCES` - Permission denied
+- `ENOMEM` - Out of memory
+- `EINVAL` - Invalid argument
+- `EIO` - I/O error
+- `EAGAIN` - Try again (non-blocking I/O)
+- `EINTR` - Interrupted system call
+</Accordion>
+
+## Best Practices
+
+<Info>
+**Check Return Values**: Always check return values from system calls and library functions. Most return -1 or NULL on error.
+</Info>
+
+<Info>
+**Buffer Safety**: Use bounded functions (strncpy, snprintf) to prevent buffer overflows.
+</Info>
+
+<Info>
+**Resource Cleanup**: Always close file descriptors, free memory, and destroy mutexes when done.
+</Info>
+
+## Related APIs
+
+- [AK](/api/ak) - Modern C++ alternatives
+- [LibCore](/api/libcore) - Higher-level abstractions
+- [System Calls](/kernel/syscalls) - Kernel interface

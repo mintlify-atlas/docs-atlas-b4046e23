@@ -1,0 +1,246 @@
+---
+title: LibGL
+description: OpenGL 1.5 compatible implementation for SerenityOS
+---
+
+LibGL is SerenityOS's implementation of OpenGL 1.5, providing hardware-accelerated 3D graphics rendering capabilities. It implements the standard OpenGL API and integrates with the GPU subsystem through LibGPU.
+
+## Architecture
+
+LibGL implements the OpenGL fixed-function pipeline with support for modern features:
+
+- **GLContext**: Central context management for all OpenGL state
+- **GPU Integration**: Hardware-accelerated rendering via LibGPU device drivers
+- **Shader Pipeline**: Vertex and fragment shader compilation and linking
+- **Buffer Objects**: VBOs and element array buffers for efficient geometry handling
+
+## Core Components
+
+### GLContext
+
+The main context class that manages all OpenGL state and operations.
+
+<ParamField path="GLContext" type="class">
+  Central OpenGL context managing rendering state, matrices, textures, and shaders.
+  
+  **Key Members:**
+  - Model-view and projection matrix stacks
+  - Texture units and texture objects
+  - Lighting and material state
+  - Shader programs and buffer objects
+  - Blending, depth, and stencil configuration
+</ParamField>
+
+### Matrix Operations
+
+<Accordion title="Matrix Stack Management">
+  LibGL maintains separate matrix stacks for different transformation types:
+  
+  ```cpp
+  void gl_matrix_mode(GLenum mode);  // GL_MODELVIEW, GL_PROJECTION, GL_TEXTURE
+  void gl_push_matrix();
+  void gl_pop_matrix();
+  void gl_load_identity();
+  void gl_load_matrix(FloatMatrix4x4 const& matrix);
+  void gl_mult_matrix(FloatMatrix4x4 const& matrix);
+  ```
+  
+  **Stack Limits:**
+  - Modelview: 64 matrices
+  - Projection: 8 matrices
+  - Texture: 8 matrices per unit
+</Accordion>
+
+### Rendering Pipeline
+
+<Accordion title="Vertex Submission">
+  Immediate mode and vertex array rendering:
+  
+  ```cpp
+  // Immediate mode
+  void gl_begin(GLenum mode);  // GL_TRIANGLES, GL_QUADS, etc.
+  void gl_vertex(GLfloat x, GLfloat y, GLfloat z, GLfloat w);
+  void gl_color(GLfloat r, GLfloat g, GLfloat b, GLfloat a);
+  void gl_tex_coord(GLfloat s, GLfloat t, GLfloat r, GLfloat q);
+  void gl_normal(GLfloat nx, GLfloat ny, GLfloat nz);
+  void gl_end();
+  
+  // Vertex arrays
+  void gl_enable_client_state(GLenum cap);
+  void gl_vertex_pointer(GLint size, GLenum type, GLsizei stride, void const* pointer);
+  void gl_draw_arrays(GLenum mode, GLint first, GLsizei count);
+  void gl_draw_elements(GLenum mode, GLsizei count, GLenum type, void const* indices);
+  ```
+</Accordion>
+
+### Texture Management
+
+LibGL supports 2D textures with multiple texture units.
+
+<ParamField path="gl_gen_textures" type="function">
+  Generate texture object names.
+  
+  ```cpp
+  void gl_gen_textures(GLsizei n, GLuint* textures);
+  ```
+</ParamField>
+
+<ParamField path="gl_bind_texture" type="function">
+  Bind a texture to a target.
+  
+  ```cpp
+  void gl_bind_texture(GLenum target, GLuint texture);
+  // target: GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_CUBE_MAP
+  ```
+</ParamField>
+
+<ParamField path="gl_tex_image_2d" type="function">
+  Specify a two-dimensional texture image.
+  
+  ```cpp
+  void gl_tex_image_2d(GLenum target, GLint level, GLint internal_format,
+                       GLsizei width, GLsizei height, GLint border,
+                       GLenum format, GLenum type, GLvoid const* data);
+  ```
+</ParamField>
+
+### Shader Support
+
+OpenGL 2.0 programmable pipeline support.
+
+<Accordion title="Shader Compilation">
+  ```cpp
+  // Create and compile shaders
+  GLuint gl_create_shader(GLenum shader_type);  // GL_VERTEX_SHADER, GL_FRAGMENT_SHADER
+  void gl_shader_source(GLuint shader, GLsizei count, GLchar const** string, GLint const* length);
+  void gl_compile_shader(GLuint shader);
+  void gl_get_shader(GLuint shader, GLenum pname, GLint* params);
+  void gl_delete_shader(GLuint shader);
+  ```
+</Accordion>
+
+<Accordion title="Program Linking">
+  ```cpp
+  // Link shader programs
+  GLuint gl_create_program();
+  void gl_attach_shader(GLuint program, GLuint shader);
+  void gl_link_program(GLuint program);
+  void gl_use_program(GLuint program);
+  void gl_get_program(GLuint program, GLenum pname, GLint* params);
+  void gl_delete_program(GLuint program);
+  ```
+</Accordion>
+
+### Lighting
+
+Fixed-function lighting with up to 8 light sources.
+
+<ParamField path="gl_lightfv" type="function">
+  Set light source parameters.
+  
+  ```cpp
+  void gl_lightfv(GLenum light, GLenum pname, GLfloat const* params);
+  // light: GL_LIGHT0 through GL_LIGHT7
+  // pname: GL_AMBIENT, GL_DIFFUSE, GL_SPECULAR, GL_POSITION, etc.
+  ```
+</ParamField>
+
+<ParamField path="gl_materialfv" type="function">
+  Set material properties.
+  
+  ```cpp
+  void gl_materialfv(GLenum face, GLenum pname, GLfloat const* params);
+  // face: GL_FRONT, GL_BACK, GL_FRONT_AND_BACK
+  // pname: GL_AMBIENT, GL_DIFFUSE, GL_SPECULAR, GL_EMISSION, GL_SHININESS
+  ```
+</ParamField>
+
+### Buffer Objects
+
+Vertex Buffer Objects (VBOs) for efficient geometry storage.
+
+<Accordion title="Buffer Management">
+  ```cpp
+  void gl_gen_buffers(GLsizei n, GLuint* buffers);
+  void gl_bind_buffer(GLenum target, GLuint buffer);
+  // target: GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER
+  
+  void gl_buffer_data(GLenum target, GLsizeiptr size, void const* data, GLenum usage);
+  // usage: GL_STATIC_DRAW, GL_DYNAMIC_DRAW, GL_STREAM_DRAW
+  
+  void gl_buffer_sub_data(GLenum target, GLintptr offset, GLsizeiptr size, void const* data);
+  void gl_delete_buffers(GLsizei n, GLuint const* buffers);
+  ```
+</Accordion>
+
+## State Management
+
+<Info>
+  LibGL maintains extensive state for the OpenGL fixed-function pipeline:
+  - Depth testing and depth buffer configuration
+  - Stencil testing with separate front/back face operations
+  - Alpha testing and blending modes
+  - Culling and polygon offset
+  - Scissor testing and clipping planes
+  - Color masking and depth masking
+</Info>
+
+### Enable/Disable Capabilities
+
+```cpp
+void gl_enable(GLenum cap);
+void gl_disable(GLenum cap);
+GLboolean gl_is_enabled(GLenum cap);
+```
+
+**Common Capabilities:**
+- `GL_DEPTH_TEST`: Depth buffer testing
+- `GL_BLEND`: Alpha blending
+- `GL_CULL_FACE`: Backface culling
+- `GL_LIGHTING`: Fixed-function lighting
+- `GL_TEXTURE_2D`: 2D texturing
+- `GL_STENCIL_TEST`: Stencil buffer testing
+- `GL_SCISSOR_TEST`: Scissor testing
+- `GL_ALPHA_TEST`: Alpha testing
+
+## Display Lists
+
+Compiled display lists for efficient repeated rendering.
+
+```cpp
+GLuint gl_gen_lists(GLsizei range);
+void gl_new_list(GLuint list, GLenum mode);  // GL_COMPILE, GL_COMPILE_AND_EXECUTE
+void gl_end_list();
+void gl_call_list(GLuint list);
+void gl_delete_lists(GLuint list, GLsizei range);
+```
+
+## Error Handling
+
+<ParamField path="gl_get_error" type="function">
+  Retrieve the current error code.
+  
+  ```cpp
+  GLenum gl_get_error();
+  ```
+  
+  **Error Codes:**
+  - `GL_NO_ERROR`: No error
+  - `GL_INVALID_ENUM`: Invalid enumeration value
+  - `GL_INVALID_VALUE`: Invalid parameter value
+  - `GL_INVALID_OPERATION`: Invalid operation
+  - `GL_STACK_OVERFLOW`: Matrix stack overflow
+  - `GL_STACK_UNDERFLOW`: Matrix stack underflow
+  - `GL_OUT_OF_MEMORY`: Out of memory
+</ParamField>
+
+## Source Location
+
+**Directory:** `Userland/Libraries/LibGL/`
+
+**Key Files:**
+- `GLContext.h` / `GLContext.cpp`: Main context implementation
+- `GL/gl.h`: OpenGL API definitions
+- `Buffer/Buffer.h`: Buffer object management
+- `Shaders/Program.h`: Shader program handling
+- `Tex/Texture.h`: Texture object implementation

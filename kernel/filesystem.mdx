@@ -1,0 +1,218 @@
+---
+title: File System Layer
+description: SerenityOS kernel file system architecture and implementations
+---
+
+The SerenityOS kernel provides a comprehensive Virtual File System (VFS) layer that abstracts various file system implementations and provides a unified interface for file operations.
+
+## Architecture
+
+The file system layer is built on several key abstractions:
+
+### Virtual File System (VFS)
+
+The VFS layer (`Kernel/FileSystem/VirtualFileSystem.cpp`) provides the main interface for all file system operations:
+
+- **Path resolution** - Resolves paths to Custody objects with symlink recursion (limited to 8 by POSIX)
+- **File operations** - `open()`, `create()`, `mkdir()`, `link()`, `unlink()`, `symlink()`, `rmdir()`
+- **Metadata operations** - `chmod()`, `chown()`, `utime()`, `utimensat()`
+- **Mount management** - `mount()`, `unmount()`, `bind_mount()`, `remount()`
+- **Access control** - Permission checking and veil (capability) validation
+
+Reference: `Kernel/FileSystem/VirtualFileSystem.h:49`
+
+### Core Abstractions
+
+<Accordion title="FileSystem Base Class">
+The `FileSystem` class (`Kernel/FileSystem/FileSystem.h`) is the base for all file system implementations:
+
+**Key responsibilities:**
+- Provide root inode access
+- Handle rename operations
+- Report block and inode statistics
+- Support flush operations
+- Manage mount/unmount lifecycle
+
+**Virtual methods:**
+```cpp
+virtual ErrorOr<void> initialize() = 0;
+virtual StringView class_name() const = 0;
+virtual Inode& root_inode() = 0;
+virtual ErrorOr<void> rename(...) = 0;
+```
+
+Reference: `Kernel/FileSystem/FileSystem.h:21`
+</Accordion>
+
+<Accordion title="Inode Interface">
+The `Inode` class (`Kernel/FileSystem/Inode.h`) represents file system objects:
+
+**Core operations:**
+- `read_bytes()` / `write_bytes()` - Data I/O
+- `truncate()` - Resize files
+- `traverse_as_directory()` - Directory iteration
+- `lookup()` - Find child by name
+- `create_child()` / `remove_child()` - Directory manipulation
+- `chmod()` / `chown()` - Metadata updates
+
+**Special features:**
+- FIFO (named pipe) support
+- File locking (`flock`)
+- Inode watching for change notifications
+- Shared memory objects via `SharedInodeVMObject`
+
+Reference: `Kernel/FileSystem/Inode.h:32`
+</Accordion>
+
+<Accordion title="Custody and Path Management">
+**Custody** objects represent resolved path components and form a chain from root to target:
+- Maintain parent-child relationships
+- Enable efficient path traversal
+- Support mount point tracking
+
+**VFSRootContext** provides namespace isolation per process for containerization.
+
+Reference: `Kernel/FileSystem/Custody.h`, `Kernel/FileSystem/VFSRootContext.h`
+</Accordion>
+
+## Supported File Systems
+
+SerenityOS implements multiple file system types:
+
+### Block-Based File Systems
+
+<Info>
+Block-based file systems inherit from `BlockBasedFileSystem` and `FileBackedFileSystem` for disk-backed storage.
+</Info>
+
+**Ext2** (`Kernel/FileSystem/Ext2FS/`)
+- Full read/write support
+- Standard Linux ext2 implementation
+- Supports extended attributes
+- Inode-based structure with block groups
+
+Reference: `Kernel/FileSystem/Ext2FS/FileSystem.h`
+
+**ISO9660** (`Kernel/FileSystem/ISO9660FS/`)
+- Read-only CD-ROM file system
+- Standards-compliant implementation
+- Directory entry iteration with Rock Ridge extensions
+
+Reference: `Kernel/FileSystem/ISO9660FS/FileSystem.h`
+
+**FAT** (`Kernel/FileSystem/FATFS/`)
+- FAT16/FAT32 support
+- DOS/Windows compatibility
+- Long filename (LFN) support
+
+### RAM-Based File Systems
+
+**RAMFS** (`Kernel/FileSystem/RAMFS/`)
+- Temporary storage in memory
+- Simple RAM-backed file system
+- No persistence across reboots
+
+**ProcFS** (`Kernel/FileSystem/ProcFS/`)
+- Process information pseudo-filesystem
+- Runtime system state exposure
+- Mounted at `/proc`
+
+Reference: `Documentation/Kernel/ProcFSIndexing.md`
+
+**SysFS** (`Kernel/FileSystem/SysFS/`)
+- Kernel object hierarchy exposure
+- Device and subsystem information
+- Mounted at `/sys`
+
+### Special-Purpose File Systems
+
+**DevPtsFS** (`Kernel/FileSystem/DevPtsFS/`)
+- Pseudo-terminal device nodes
+- Dynamic PTY allocation
+
+**DevLoopFS** (`Kernel/FileSystem/DevLoopFS/`)
+- Loop device management
+- File-as-block-device mapping
+
+**Plan9FS** (`Kernel/FileSystem/Plan9FS/`)
+- 9P protocol implementation
+- Network file system support
+
+**FUSE** (`Kernel/FileSystem/FUSE/`)
+- Filesystem in Userspace
+- Allows userspace file system implementations
+
+Reference: `Kernel/Devices/FUSEDevice.h`
+
+## Mount System
+
+The kernel maintains a mount table with the following capabilities:
+
+- **Bind mounts** - Mount existing directory elsewhere
+- **Remount** - Change mount flags (e.g., read-only)
+- **Copy mounts** - Copy mounted filesystem to different namespace
+- **Pivot root** - Change root filesystem
+
+Mount flags control behavior:
+- `MS_NODEV` - Disallow device files
+- `MS_NOEXEC` - Disallow execution
+- `MS_NOSUID` - Ignore setuid/setgid bits
+- `MS_RDONLY` - Read-only mount
+
+Reference: `Kernel/FileSystem/Mount.h`
+
+## File Descriptors
+
+`OpenFileDescription` (`Kernel/FileSystem/OpenFileDescription.h`) represents open file handles:
+
+- Maintains current offset
+- Tracks open flags (O_RDONLY, O_WRONLY, etc.)
+- Supports blocking/non-blocking I/O
+- Handles device-specific operations
+
+Reference: `Kernel/FileSystem/OpenFileDescription.h`
+
+## Key Features
+
+### Unveil Security
+
+The veil mechanism restricts file system access to explicitly unveiled paths:
+- Processes declare needed paths with permissions
+- Kernel enforces access restrictions
+- Prevents unauthorized file access
+
+Reference: `Kernel/FileSystem/UnveilNode.h`
+
+### File Locking
+
+Full POSIX advisory locking support:
+- `flock()` for whole-file locks
+- Record locking with byte ranges
+- Blocking and non-blocking modes
+
+Reference: `Kernel/FileSystem/Inode.h:103`
+
+### Inode Watchers
+
+File system change notification mechanism:
+- Monitor file/directory modifications
+- Event delivery to userspace
+- Used by file managers and build systems
+
+Reference: `Kernel/FileSystem/InodeWatcher.h`
+
+## Implementation Notes
+
+<Info>
+The VFS maintains a symlink recursion limit of 8 (POSIX minimum requirement) to prevent infinite loops.
+</Info>
+
+All file system implementations must:
+1. Inherit from `FileSystem` base class
+2. Implement required virtual methods
+3. Register with `FileSystemInitializer`
+4. Handle proper mount/unmount lifecycle
+
+The kernel supports both file-backed file systems (requiring block devices) and synthetic file systems (generated on-the-fly).
+
+Reference: `Kernel/FileSystem/Initializer.h`

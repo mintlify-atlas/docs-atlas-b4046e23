@@ -1,0 +1,263 @@
+---
+title: Building on Windows/WSL2
+description: Build SerenityOS on Windows using WSL2 (Windows Subsystem for Linux)
+---
+
+SerenityOS can be built and run under WSL Version 2. WSL Version 1 is **not supported** since it lacks ext2 filesystem support.
+
+## Prerequisites
+
+<Warning>
+WSL Version 2 requires:
+- **Windows 10 version 2004** or higher
+- **OS Build 19041** or greater
+</Warning>
+
+## Installing WSL2
+
+<Steps>
+  <Step title="Install WSL2">
+    Follow the official Microsoft guide: [Get WSL2](https://docs.microsoft.com/en-us/windows/wsl/install-win10)
+  </Step>
+
+  <Step title="Verify WSL version">
+    Check your installed distributions and versions:
+    
+    ```powershell
+    wsl -l -v
+    ```
+  </Step>
+
+  <Step title="Convert to WSL2 (if needed)">
+    If your distribution is using Version 1, convert it:
+    
+    ```powershell
+    wsl --set-version <distro> 2
+    ```
+  </Step>
+
+  <Step title="Set default version (optional)">
+    To make WSL2 the default for all new distributions:
+    
+    ```powershell
+    wsl --set-default-version 2
+    ```
+  </Step>
+</Steps>
+
+## Install Build Dependencies
+
+Once WSL2 is set up, follow the Linux build instructions for your chosen distribution:
+
+<CardGroup cols={2}>
+  <Card title="Ubuntu/Debian" icon="ubuntu" href="/building/linux#debian--ubuntu">
+    Most common choice for WSL2
+  </Card>
+  <Card title="Other Distributions" icon="linux" href="/building/linux">
+    Arch, Fedora, and more
+  </Card>
+</CardGroup>
+
+## Filesystem Performance
+
+<Warning>
+**Critical Performance Note:**
+
+WSL2 filesystem performance for IO-heavy tasks (like compiling C++ projects) is **significantly slower** on the Windows filesystem compared to the Linux filesystem.
+</Warning>
+
+### Recommended Setup
+
+Store your project in the **Linux filesystem**:
+
+```bash
+# Clone to Linux filesystem
+cd ~
+git clone https://github.com/SerenityOS/serenity.git
+cd serenity
+```
+
+### Accessing Linux Files from Windows
+
+You can access your Linux filesystem from Windows Explorer at:
+
+```
+\\wsl$\<distro-name>\home\<username>\serenity
+```
+
+For example:
+```
+\\wsl$\Ubuntu\home\john\serenity
+```
+
+<Info>
+This allows you to use Windows editors and tools while keeping the build fast.
+</Info>
+
+## Setting up QEMU
+
+<Steps>
+  <Step title="Download QEMU for Windows">
+    Download the latest QEMU binaries from [qemu.org](https://www.qemu.org/download/#windows)
+  </Step>
+
+  <Step title="Install required components">
+    During installation, select at minimum:
+    - **Tools**
+    - **System emulators** (i386 and x86_64)
+    - **DLL libraries**
+
+    ![QEMU Components](/images/QEMU_Components.png)
+  </Step>
+
+  <Step title="Build and run SerenityOS">
+    ```bash
+    Meta/serenity.sh run
+    ```
+  </Step>
+</Steps>
+
+## Hardware Acceleration
+
+By default, QEMU runs in software virtualization mode, which is very slow. Enable hardware acceleration for better performance:
+
+<Steps>
+  <Step title="Enable Windows Hypervisor Platform">
+    <Tabs>
+      <Tab title="GUI Method">
+        1. Open "Turn Windows features on or off"
+        2. Check **Windows Hypervisor Platform**
+        3. Click OK
+
+        ![WHPX Feature](/images/WHPX_Feature.png)
+      </Tab>
+
+      <Tab title="PowerShell Method">
+        Run in an elevated PowerShell session:
+        ```powershell
+        dism /Online /Enable-Feature /All /FeatureName:HypervisorPlatform
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Reboot">
+    <Warning>
+    You may need to reboot after enabling WHPX.
+    </Warning>
+  </Step>
+
+  <Step title="Run SerenityOS">
+    QEMU will automatically use WHPX when available:
+    ```bash
+    Meta/serenity.sh run
+    ```
+  </Step>
+</Steps>
+
+## Advanced Filesystem Configuration
+
+### Using Native Windows Partitions
+
+For better QEMU performance, you can copy the disk image to a native Windows partition:
+
+```bash
+# Copy disk image to Windows C: drive
+cp Build/_disk_image /mnt/c/serenity/_disk_image
+cp Build/Kernel/Kernel /mnt/c/serenity/Kernel
+```
+
+Then configure `SERENITY_DISK_IMAGE` to point to the Windows path (e.g., `D:\serenity\_disk_image`).
+
+<Info>
+This avoids the 9P network filesystem overhead when accessing WSL2 files from Windows QEMU.
+</Info>
+
+### WSL Network Path
+
+The root of your WSL2 distribution is accessible from Windows at:
+
+```
+\\wsl$\{distro-name}
+```
+
+## Troubleshooting
+
+### WSL Version Issues
+
+If you're unsure about your WSL version:
+
+```powershell
+# List distributions and versions
+wsl -l -v
+
+# Should show VERSION 2
+```
+
+### Performance Problems
+
+If builds are very slow:
+
+1. **Verify you're using Linux filesystem** (not `/mnt/c/`)
+2. Check current directory:
+   ```bash
+   pwd
+   # Should be /home/<user>/... NOT /mnt/c/...
+   ```
+
+### QEMU Launch Failures
+
+If QEMU doesn't start:
+
+1. Verify QEMU is in Windows PATH
+2. Check QEMU installation:
+   ```powershell
+   qemu-system-x86_64 --version
+   ```
+3. Ensure hardware acceleration is enabled
+
+### File Permission Errors
+
+If you encounter permission issues:
+
+```bash
+# Fix executable permissions
+chmod +x Meta/serenity.sh
+chmod +x Toolchain/*.sh
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Linux filesystem for source code">
+    Always clone and build in `/home/` or `/root/`, never in `/mnt/c/` or other Windows mounts.
+  </Accordion>
+
+  <Accordion title="Enable hardware acceleration">
+    WHPX provides massive performance improvements. Always enable it.
+  </Accordion>
+
+  <Accordion title="Use Windows editors with WSL files">
+    Access your Linux files via `\\wsl$\` to use VS Code, Sublime, or other Windows editors.
+  </Accordion>
+
+  <Accordion title="Allocate sufficient resources">
+    Configure WSL2 memory and CPU limits in `.wslconfig`:
+    ```ini
+    [wsl2]
+    memory=8GB
+    processors=4
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Build System Overview" icon="book" href="/building/overview">
+    Learn about the SuperBuild system
+  </Card>
+  <Card title="Advanced Options" icon="gear" href="/building/advanced">
+    Explore CMake options and customization
+  </Card>
+</CardGroup>

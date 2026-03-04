@@ -1,0 +1,510 @@
+---
+title: LibGfx
+description: Graphics primitives and rendering library for SerenityOS
+---
+
+LibGfx is the core graphics library providing 2D rendering primitives, image handling, color management, and font rendering for SerenityOS. It serves as the foundation for the entire graphical system.
+
+## Overview
+
+LibGfx provides essential graphics functionality:
+
+- **Bitmap Operations**: Image creation, loading, and manipulation
+- **Color Management**: RGB, HSV, YUV, Oklab color spaces
+- **2D Rendering**: Shapes, lines, gradients, and anti-aliasing
+- **Font Rendering**: TrueType, bitmap fonts, and text layout
+- **Image Codecs**: PNG, JPEG, GIF, BMP, and more
+- **Transformations**: Affine transformations and scaling
+
+## Core Types
+
+### Bitmap
+
+The fundamental image representation.
+
+<ParamField path="Bitmap" type="class">
+  Raster image data with multiple pixel formats.
+  
+  ```cpp
+  class Bitmap : public RefCounted<Bitmap> {
+      static ErrorOr<NonnullRefPtr<Bitmap>> create(BitmapFormat, IntSize, int scale = 1);
+      static ErrorOr<NonnullRefPtr<Bitmap>> load_from_file(StringView path, int scale = 1);
+      static ErrorOr<NonnullRefPtr<Bitmap>> load_from_bytes(ReadonlyBytes);
+      
+      IntSize size() const;
+      int width() const;
+      int height() const;
+      BitmapFormat format() const;
+  };
+  ```
+</ParamField>
+
+### Bitmap Formats
+
+<Accordion title="Pixel Formats">
+  ```cpp
+  enum class BitmapFormat {
+      Invalid,
+      BGRx8888,    // 32-bit RGB (no alpha)
+      BGRA8888,    // 32-bit RGBA
+      RGBA8888,    // 32-bit RGBA (alternative byte order)
+  };
+  
+  unsigned bpp_for_format(BitmapFormat format);  // Returns 32
+  bool has_alpha_channel() const;
+  void add_alpha_channel();
+  void strip_alpha_channel();
+  ```
+</Accordion>
+
+### Pixel Access
+
+<ParamField path="get_pixel" type="method">
+  Read pixel color at coordinates.
+  
+  ```cpp
+  Color get_pixel(int x, int y) const;
+  Color get_pixel(IntPoint position) const;
+  ```
+</ParamField>
+
+<ParamField path="set_pixel" type="method">
+  Set pixel color at coordinates.
+  
+  ```cpp
+  void set_pixel(int x, int y, Color);
+  void set_pixel(IntPoint position, Color);
+  ```
+</ParamField>
+
+<ParamField path="scanline" type="method">
+  Direct scanline access for performance.
+  
+  ```cpp
+  ARGB32* scanline(int y);
+  ARGB32 const* scanline(int y) const;
+  ```
+</ParamField>
+
+## Color Management
+
+### Color Class
+
+<ParamField path="Color" type="class">
+  32-bit ARGB color with extensive color space support.
+  
+  ```cpp
+  class Color {
+      // Construction
+      constexpr Color(u8 r, u8 g, u8 b, u8 a = 255);
+      static constexpr Color from_rgb(unsigned rgb);
+      static constexpr Color from_argb(unsigned argb);
+      
+      // Component access
+      constexpr u8 red() const;
+      constexpr u8 green() const;
+      constexpr u8 blue() const;
+      constexpr u8 alpha() const;
+      
+      // Value
+      constexpr ARGB32 value() const;
+  };
+  ```
+</ParamField>
+
+### Color Spaces
+
+<Accordion title="HSV Color Space">
+  ```cpp
+  struct HSV {
+      double hue;         // 0.0 - 360.0
+      double saturation;  // 0.0 - 1.0
+      double value;       // 0.0 - 1.0
+  };
+  
+  static constexpr Color from_hsv(double h, double s, double v);
+  static constexpr Color from_hsv(HSV const&);
+  constexpr HSV to_hsv() const;
+  ```
+</Accordion>
+
+<Accordion title="YUV Color Space">
+  ```cpp
+  struct YUV {
+      float y;  // Luminance
+      float u;  // Blue-difference
+      float v;  // Red-difference
+  };
+  
+  static constexpr Color from_yuv(float y, float u, float v);
+  static constexpr Color from_yuv(YUV const&);
+  constexpr YUV to_yuv() const;
+  ```
+  
+  Uses ITU-R BT.1700 standard conversion.
+</Accordion>
+
+<Accordion title="Oklab Color Space">
+  ```cpp
+  struct Oklab {
+      float L;  // Lightness
+      float a;  // Green-red
+      float b;  // Blue-yellow
+  };
+  
+  static constexpr Color from_oklab(float L, float a, float b, float alpha = 1.0f);
+  constexpr Oklab to_oklab();
+  ```
+  
+  Perceptually uniform color space for better gradients and mixing.
+</Accordion>
+
+### Color Operations
+
+<ParamField path="blend" type="method">
+  Alpha blend two colors.
+  
+  ```cpp
+  constexpr Color blend(Color source) const;
+  ```
+</ParamField>
+
+<ParamField path="mixed_with" type="method">
+  Interpolate between colors.
+  
+  ```cpp
+  Color mixed_with(Color other, float weight) const;
+  // weight: 0.0 = this color, 1.0 = other color
+  ```
+</ParamField>
+
+<ParamField path="luminosity" type="method">
+  Calculate perceived brightness.
+  
+  ```cpp
+  constexpr u8 luminosity() const;
+  // Uses: 0.2126*R + 0.7152*G + 0.0722*B
+  ```
+</ParamField>
+
+<ParamField path="contrast_ratio" type="method">
+  WCAG contrast ratio calculation.
+  
+  ```cpp
+  constexpr float contrast_ratio(Color other);
+  // Returns ratio between 1.0 and 21.0
+  ```
+</ParamField>
+
+## Painter
+
+The main 2D rendering interface.
+
+<ParamField path="Painter" type="class">
+  2D drawing operations on bitmaps.
+  
+  ```cpp
+  class Painter {
+      explicit Painter(Gfx::Bitmap&);
+      
+      void clear_rect(IntRect const&, Color);
+      void fill_rect(IntRect const&, Color);
+      void draw_rect(IntRect const&, Color, bool rough = false);
+      void draw_line(IntPoint, IntPoint, Color, int thickness = 1);
+  };
+  ```
+</ParamField>
+
+### Shape Drawing
+
+<Accordion title="Basic Shapes">
+  ```cpp
+  // Rectangles
+  void fill_rect(IntRect const&, Color);
+  void fill_rect_with_rounded_corners(IntRect const&, Color, int radius);
+  void draw_rect(IntRect const&, Color);
+  void draw_rect_with_thickness(IntRect const&, Color, int thickness);
+  
+  // Ellipses
+  void fill_ellipse(IntRect const&, Color);
+  void draw_ellipse_intersecting(IntRect const&, Color, int thickness = 1);
+  
+  // Triangles
+  void draw_triangle(IntPoint, IntPoint, IntPoint, Color);
+  ```
+</Accordion>
+
+### Gradient Fills
+
+<Accordion title="Gradient Types">
+  ```cpp
+  // Linear gradients
+  void fill_rect_with_gradient(Orientation, IntRect const&, 
+                               Color start, Color end);
+  void fill_rect_with_linear_gradient(IntRect const&, 
+                                      ReadonlySpan<ColorStop>, 
+                                      float angle, 
+                                      Optional<float> repeat_length = {});
+  
+  // Radial gradients
+  void fill_rect_with_radial_gradient(IntRect const&, 
+                                      ReadonlySpan<ColorStop>,
+                                      IntPoint center, IntSize size);
+  
+  // Conic gradients
+  void fill_rect_with_conic_gradient(IntRect const&, 
+                                     ReadonlySpan<ColorStop>,
+                                     IntPoint center, float start_angle);
+  ```
+</Accordion>
+
+### Line Drawing
+
+<ParamField path="draw_line" type="method">
+  Draw a line between two points.
+  
+  ```cpp
+  void draw_line(IntPoint p1, IntPoint p2, Color, 
+                 int thickness = 1, 
+                 LineStyle style = LineStyle::Solid,
+                 Color alternate_color = Color::Transparent);
+  ```
+  
+  **Line Styles:**
+  - `LineStyle::Solid`: Continuous line
+  - `LineStyle::Dotted`: Dotted pattern
+  - `LineStyle::Dashed`: Dashed pattern
+</ParamField>
+
+### Bezier Curves
+
+<Accordion title="Curve Drawing">
+  ```cpp
+  // Quadratic Bezier
+  void draw_quadratic_bezier_curve(IntPoint control, 
+                                   IntPoint p1, IntPoint p2,
+                                   Color, int thickness = 1);
+  
+  // Cubic Bezier
+  void draw_cubic_bezier_curve(IntPoint control1, IntPoint control2,
+                               IntPoint p1, IntPoint p2,
+                               Color, int thickness = 1);
+  
+  // Elliptical arc
+  void draw_elliptical_arc(IntPoint p1, IntPoint p2, IntPoint center,
+                           FloatSize radii, float x_axis_rotation,
+                           float theta_1, float theta_delta,
+                           Color, int thickness = 1);
+  ```
+</Accordion>
+
+## Bitmap Operations
+
+### Blitting
+
+<ParamField path="blit" type="method">
+  Copy bitmap data with alpha blending.
+  
+  ```cpp
+  void blit(IntPoint destination, 
+            Gfx::Bitmap const& source,
+            IntRect const& src_rect,
+            float opacity = 1.0f,
+            bool apply_alpha = true);
+  ```
+</ParamField>
+
+<ParamField path="draw_scaled_bitmap" type="method">
+  Draw bitmap with scaling.
+  
+  ```cpp
+  void draw_scaled_bitmap(IntRect const& dst_rect,
+                          Gfx::Bitmap const& source,
+                          IntRect const& src_rect,
+                          float opacity = 1.0f,
+                          ScalingMode mode = ScalingMode::NearestNeighbor);
+  ```
+  
+  **Scaling Modes:**
+  - `NearestNeighbor`: Fast, pixelated
+  - `BilinearBlend`: Smooth interpolation
+  - `SmoothPixels`: High-quality scaling
+</ParamField>
+
+### Transformations
+
+<Accordion title="Bitmap Transformations">
+  ```cpp
+  // Rotation
+  ErrorOr<NonnullRefPtr<Bitmap>> rotated(RotationDirection) const;
+  
+  // Flipping
+  ErrorOr<NonnullRefPtr<Bitmap>> flipped(Orientation) const;
+  
+  // Scaling
+  ErrorOr<NonnullRefPtr<Bitmap>> scaled(float sx, float sy) const;
+  ErrorOr<NonnullRefPtr<Bitmap>> scaled_to_size(IntSize) const;
+  
+  // Cropping
+  ErrorOr<NonnullRefPtr<Bitmap>> cropped(IntRect, 
+      Optional<BitmapFormat> new_format = {}) const;
+  
+  // Color inversion
+  ErrorOr<NonnullRefPtr<Bitmap>> inverted() const;
+  ```
+</Accordion>
+
+## Font Rendering
+
+<ParamField path="Font" type="class">
+  Abstract font interface for text rendering.
+  
+  ```cpp
+  class Font {
+      virtual float pixel_size() const = 0;
+      virtual float point_size() const = 0;
+      
+      virtual int pixel_size_rounded_up() const = 0;
+      virtual float glyph_width(u32 code_point) const = 0;
+      virtual int glyph_or_emoji_width(u32 code_point) const = 0;
+      
+      virtual float baseline() const = 0;
+      virtual float mean_line() const = 0;
+  };
+  ```
+</ParamField>
+
+### Text Drawing
+
+<Accordion title="Text Rendering">
+  ```cpp
+  void draw_text(FloatRect const& rect,
+                 StringView text,
+                 Font const& font,
+                 TextAlignment = TextAlignment::TopLeft,
+                 Color = Color::Black,
+                 TextElision = TextElision::None,
+                 TextWrapping = TextWrapping::DontWrap);
+  ```
+  
+  **Text Alignment:**
+  - `TopLeft`, `TopCenter`, `TopRight`
+  - `CenterLeft`, `Center`, `CenterRight`
+  - `BottomLeft`, `BottomCenter`, `BottomRight`
+  
+  **Text Elision:**
+  - `None`: No elision
+  - `Right`: Add ellipsis at end
+  
+  **Text Wrapping:**
+  - `DontWrap`: Single line
+  - `Wrap`: Multi-line wrapping
+</Accordion>
+
+## Image Format Support
+
+LibGfx includes loaders for many image formats:
+
+<Info>
+  **Supported Formats:**
+  - **Raster:** PNG, JPEG, GIF, BMP, TGA, TIFF, WebP
+  - **Advanced:** JPEG2000, JBIG2, JXL (JPEG XL)
+  - **Other:** QOI, IFF/LBM, DDS, ICO
+  - **Portable:** PBM, PGM, PPM, PAM
+  - **Vector:** TVG (TinyVG)
+</Info>
+
+## Advanced Features
+
+### Anti-Aliasing
+
+<ParamField path="AntiAliasingPainter" type="class">
+  High-quality anti-aliased rendering.
+  
+  ```cpp
+  class AntiAliasingPainter {
+      void fill_path(Path const&, Color, WindingRule = WindingRule::Nonzero);
+      void stroke_path(Path const&, Color, float thickness);
+  };
+  ```
+  
+  **Location:** `LibGfx/AntiAliasingPainter.h`
+</ParamField>
+
+### Affine Transformations
+
+<Accordion title="2D Transforms">
+  ```cpp
+  class AffineTransform {
+      AffineTransform& translate(FloatPoint);
+      AffineTransform& scale(float sx, float sy);
+      AffineTransform& rotate(float radians);
+      
+      FloatPoint map(FloatPoint) const;
+      FloatRect map(FloatRect) const;
+  };
+  ```
+  
+  **Location:** `LibGfx/AffineTransform.h`
+</Accordion>
+
+### Color Utilities
+
+<Accordion title="Color Manipulation">
+  ```cpp
+  // Brightness adjustments
+  constexpr Color darkened(float amount = 0.5f) const;
+  constexpr Color lightened(float amount = 1.2f) const;
+  
+  // Effects
+  constexpr Color with_opacity(float opacity) const;
+  constexpr Color to_grayscale() const;
+  constexpr Color sepia(float amount = 1.0f) const;
+  constexpr Color inverted() const;
+  
+  // Saturation
+  constexpr Color saturated_to(float saturation) const;
+  
+  // Variations
+  Vector<Color> shades(u32 steps, float max = 1.0f) const;
+  Vector<Color> tints(u32 steps, float max = 1.0f) const;
+  ```
+</Accordion>
+
+## Geometry Types
+
+<Info>
+  LibGfx provides geometric primitives:
+  - `IntPoint`, `FloatPoint`: 2D points
+  - `IntSize`, `FloatSize`: Dimensions
+  - `IntRect`, `FloatRect`: Rectangles
+  - `Line`: Line segments
+  - `Triangle`: 2D triangles
+  - `Path`: Complex vector paths
+</Info>
+
+## Style Painting
+
+<ParamField path="ClassicStylePainter" type="class">
+  Classic UI widget rendering.
+  
+  Provides themed drawing for:
+  - Buttons (normal, pressed, disabled)
+  - Checkboxes and radio buttons
+  - Progress bars
+  - Tabs and frames
+  
+  **Location:** `LibGfx/ClassicStylePainter.h`
+</ParamField>
+
+## Source Location
+
+**Directory:** `Userland/Libraries/LibGfx/`
+
+**Key Files:**
+- `Bitmap.h`: Core bitmap functionality
+- `Color.h`: Color representation and manipulation  
+- `Painter.h`: 2D rendering operations
+- `Font/Font.h`: Font interface and rendering
+- `AffineTransform.h`: 2D transformations
+- `AntiAliasingPainter.h`: Anti-aliased drawing

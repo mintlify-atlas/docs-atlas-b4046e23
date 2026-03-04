@@ -1,0 +1,241 @@
+---
+title: System Architecture Overview
+description: Overview of SerenityOS system architecture and design
+---
+
+SerenityOS is a complete, from-scratch Unix-like operating system featuring a modern microkernel-inspired architecture with a monolithic kernel implementation. The system is designed as a love letter to '90s user interfaces while maintaining modern security and design patterns.
+
+## High-Level Architecture
+
+SerenityOS follows a layered architecture:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│           Applications & Games                          │
+├─────────────────────────────────────────────────────────┤
+│           System Services                               │
+│  (WindowServer, AudioServer, LoginServer, etc.)         │
+├─────────────────────────────────────────────────────────┤
+│           Libraries (LibGUI, LibWeb, LibGfx, etc.)      │
+├─────────────────────────────────────────────────────────┤
+│           LibC (POSIX Compatibility Layer)              │
+├─────────────────────────────────────────────────────────┤
+│           Kernel (Microkernel-inspired)                 │
+│  • Process/Thread Management                            │
+│  • Memory Management                                    │
+│  • Filesystem                                           │
+│  • Device Drivers                                       │
+│  • Network Stack                                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Core Components
+
+<CardGroup cols={2}>
+  <Card title="Kernel" icon="microchip" href="./kernel">
+    Modern 64-bit kernel with pre-emptive multi-threading, memory protection, and hardware support for x86-64, ARM, and RISC-V
+  </Card>
+  
+  <Card title="Userland" icon="users" href="./userland">
+    Complete userspace including system services, applications, utilities, and libraries
+  </Card>
+  
+  <Card title="Libraries" icon="book" href="./libraries">
+    Rich set of libraries from LibC to LibWeb, all built from scratch
+  </Card>
+  
+  <Card title="IPC" icon="exchange" href="./ipc">
+    Modern inter-process communication system for service coordination
+  </Card>
+</CardGroup>
+
+## Design Principles
+
+<AccordionGroup>
+  <Accordion title="From-Scratch Philosophy">
+    Every component of SerenityOS is written from scratch with no external dependencies. This includes:
+    - Custom kernel implementation
+    - Complete C library (LibC)
+    - All system libraries and frameworks
+    - Web browser engine (LibWeb)
+    - Graphics stack
+    - Network stack
+    
+    The only exception is the ~300 ports of existing open-source software available separately.
+  </Accordion>
+  
+  <Accordion title="Security by Design">
+    SerenityOS implements multiple security features:
+    - Hardware memory protection (NX, SMEP, SMAP)
+    - W^X (Write XOR Execute) memory policies
+    - `pledge()` and `unveil()` system calls (inspired by OpenBSD)
+    - Kernel and userland ASLR (KASLR)
+    - OOM resistance
+    - Web content isolation
+    - Limited userland capabilities
+  </Accordion>
+  
+  <Accordion title="Modern C++ Design Patterns">
+    The codebase extensively uses modern C++ patterns:
+    - Smart pointers (NonnullRefPtr, RefPtr, OwnPtr, NonnullOwnPtr)
+    - Error propagation with `ErrorOr<T>` and `TRY()` macro
+    - Value semantics and move semantics
+    - Template metaprogramming
+    - Custom data structures in AK (Application Kit)
+  </Accordion>
+  
+  <Accordion title="POSIX Compatibility">
+    While not strictly POSIX-compliant, SerenityOS provides:
+    - Standard Unix syscalls and signals
+    - POSIX-like virtual filesystems (/proc, /dev, /sys, /tmp)
+    - Pseudoterminals (PTY)
+    - Filesystem notifications
+    - Shell and standard Unix utilities
+    - Good LibC compatibility
+  </Accordion>
+</AccordionGroup>
+
+## Directory Structure
+
+The source tree is organized into clear, functional directories:
+
+<CodeGroup>
+```bash Top-Level Structure
+SerenityOS/
+├── Kernel/          # Kernel implementation
+├── Userland/        # All userspace code
+├── AK/              # Application Kit (fundamental data structures)
+├── Meta/            # Build system and metadata
+├── Base/            # Root filesystem base
+├── Ports/           # Third-party software ports
+└── Documentation/   # Technical documentation
+```
+
+```bash Kernel Structure
+Kernel/
+├── Arch/            # Architecture-specific code (x86_64, aarch64, riscv64)
+├── Devices/         # Device drivers (GPU, Storage, Audio, etc.)
+├── FileSystem/      # Filesystem implementations (Ext2, FAT, etc.)
+├── Memory/          # Memory management
+├── Net/             # Network stack
+├── Tasks/           # Process and thread management
+├── Syscalls/        # System call implementations
+└── Bus/             # Bus support (PCI, USB, I2C, etc.)
+```
+
+```bash Userland Structure
+Userland/
+├── Libraries/       # All system libraries (~80 libraries)
+├── Services/        # System services (WindowServer, etc.)
+├── Applications/    # GUI and CLI applications
+├── Games/           # Built-in games
+├── Utilities/       # Command-line tools
+└── Demos/           # Demonstration programs
+```
+</CodeGroup>
+
+## Platform Support
+
+<Info>
+SerenityOS supports multiple hardware architectures:
+- **x86-64**: Primary architecture with full feature support
+- **ARM (aarch64)**: Growing support for ARM64 systems
+- **RISC-V (riscv64)**: Experimental RISC-V 64-bit support
+</Info>
+
+The kernel abstracts architecture-specific details in the `Kernel/Arch/` directory, allowing for portable kernel code.
+
+## Build System
+
+SerenityOS uses **CMake** as its build system with custom toolchain configuration:
+
+- Cross-compilation support from Linux, macOS, Windows (WSL2), and other Unix systems
+- Separate toolchains for each target architecture
+- Incremental builds with dependency tracking
+- Integrated testing framework
+- QEMU integration for easy testing
+
+## Memory Architecture
+
+The system uses a sophisticated memory management approach:
+
+- **Virtual Memory**: Full MMU utilization with page-level protection
+- **Kernel Space**: Higher-half kernel (separate from userspace)
+- **Userspace**: Each process has isolated address space
+- **Shared Memory**: VMObject-based shared memory regions
+- **Copy-on-Write**: Efficient fork() implementation
+- **Memory-Mapped I/O**: Direct device access via mmap()
+
+## Filesystem Architecture
+
+SerenityOS implements a VFS (Virtual Filesystem) layer supporting:
+
+<Tabs>
+  <Tab title="On-Disk Filesystems">
+    - **Ext2**: Primary filesystem (read/write)
+    - **FAT32**: FAT filesystem support
+    - **ISO9660**: CD-ROM filesystem
+    - **Plan9FS**: Network filesystem
+  </Tab>
+  
+  <Tab title="Virtual Filesystems">
+    - **ProcFS**: Process information (`/proc`)
+    - **SysFS**: System information (`/sys`)
+    - **DevPtsFS**: Pseudoterminal devices (`/dev/pts`)
+    - **TmpFS**: Temporary storage (`/tmp`)
+    - **DevLoopFS**: Loop device support
+  </Tab>
+</Tabs>
+
+## Network Architecture
+
+The network stack is implemented entirely in the kernel:
+
+- **IPv4**: Full IPv4 support with routing
+- **IPv6**: Growing IPv6 implementation
+- **TCP/UDP**: Reliable and unreliable transport protocols
+- **Sockets**: BSD-style socket API
+- **Protocols**: HTTP, DNS, DHCP, NTP, and more in userland
+
+## Graphics Pipeline
+
+```
+Application (LibGUI)
+       |
+       v
+ WindowServer (Compositor)
+       |
+       v
+   LibGfx (Rendering)
+       |
+       v
+ Kernel Graphics Subsystem
+       |
+       v
+  Display Connector Devices (/dev/gpu/connectorX)
+       |
+       v
+ Hardware Framebuffer (GPU drivers)
+```
+
+See [Kernel Graphics Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/Kernel/GraphicsSubsystem.md) for details.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Explore the Kernel" icon="microchip" href="./kernel">
+    Deep dive into kernel architecture, subsystems, and design
+  </Card>
+  
+  <Card title="Understand Userland" icon="users" href="./userland">
+    Learn about services, applications, and the userspace environment
+  </Card>
+  
+  <Card title="Study Libraries" icon="book" href="./libraries">
+    Examine the library architecture and organization
+  </Card>
+  
+  <Card title="Learn IPC" icon="exchange" href="./ipc">
+    Understand how processes communicate in SerenityOS
+  </Card>
+</CardGroup>

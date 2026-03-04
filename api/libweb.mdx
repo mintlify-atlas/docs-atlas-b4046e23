@@ -1,0 +1,559 @@
+---
+title: LibWeb
+description: Complete web engine implementation for SerenityOS
+---
+
+LibWeb is SerenityOS's comprehensive web engine, implementing modern web standards including HTML5, CSS3, JavaScript, and Web APIs. It provides a full-featured browser engine with standards-compliant DOM, rendering, and scripting capabilities.
+
+## Architecture Overview
+
+LibWeb is organized into subsystems that mirror web specifications:
+
+- **DOM**: Document Object Model and tree structures
+- **HTML**: HTML parsing, elements, and semantics
+- **CSS**: Style computation and cascade
+- **Layout**: Box model and positioning
+- **Painting**: Rendering pipeline
+- **JavaScript**: Integration with LibJS
+- **Fetch**: Network resource loading
+- **Web APIs**: Canvas, WebGL, Storage, and more
+
+## Core Subsystems
+
+### DOM (Document Object Model)
+
+<ParamField path="Document" type="class">
+  The root document object representing an HTML or XML document.
+  
+  ```cpp
+  class Document : public ParentNode,
+                   public NonElementParentNode<Document>,
+                   public HTML::GlobalEventHandlers {
+      // Document lifecycle
+      HTML::DocumentReadyState ready_state() const;
+      
+      // DOM tree access
+      Element* document_element();
+      Element* body();
+      Element* head();
+      
+      // Element creation
+      NonnullRefPtr<Element> create_element(String const& tag_name);
+      NonnullRefPtr<Text> create_text_node(String const& data);
+      
+      // Querying
+      Element* get_element_by_id(String const& id);
+      Vector<Element*> get_elements_by_tag_name(String const&);
+  };
+  ```
+  
+  **Location:** `LibWeb/DOM/Document.h`
+</ParamField>
+
+<Accordion title="Node Types">
+  LibWeb implements the complete DOM node hierarchy:
+  
+  - **Node**: Base class for all DOM nodes
+  - **Element**: Elements with attributes and tag names
+  - **Text**: Text content nodes
+  - **Comment**: Comment nodes
+  - **DocumentType**: DOCTYPE declarations
+  - **DocumentFragment**: Lightweight document containers
+  - **Attr**: Attribute nodes
+  
+  **Node Operations:**
+  ```cpp
+  void append_child(Node&);
+  void remove_child(Node&);
+  void insert_before(Node& node, Node& child);
+  Node* parent_node();
+  Node* first_child();
+  Node* last_child();
+  Node* next_sibling();
+  Node* previous_sibling();
+  ```
+</Accordion>
+
+### HTML Elements
+
+<ParamField path="HTMLElement" type="class">
+  Base class for all HTML elements.
+  
+  ```cpp
+  class HTMLElement : public DOM::Element,
+                      public HTML::GlobalEventHandlers {
+      // Content properties
+      String inner_text();
+      void set_inner_text(StringView);
+      String outer_text();
+      
+      // Layout properties
+      int offset_top() const;
+      int offset_left() const;
+      int offset_width() const;
+      int offset_height() const;
+      Element* offset_parent() const;
+      
+      // Focus and interaction
+      void focus();
+      void blur();
+      void click();
+      
+      // Editability
+      bool is_editable() const;
+      bool is_content_editable() const;
+  };
+  ```
+  
+  **Location:** `LibWeb/HTML/HTMLElement.h`
+</ParamField>
+
+<Info>
+  **Common HTML Elements:**
+  - Layout: `HTMLDivElement`, `HTMLSpanElement`
+  - Forms: `HTMLFormElement`, `HTMLInputElement`, `HTMLButtonElement`
+  - Media: `HTMLImageElement`, `HTMLVideoElement`, `HTMLAudioElement`
+  - Semantic: `HTMLHeadingElement`, `HTMLParagraphElement`
+  - Tables: `HTMLTableElement`, `HTMLTableRowElement`
+  - Canvas: `HTMLCanvasElement`
+</Info>
+
+### CSS (Cascading Style Sheets)
+
+<Accordion title="CSS Engine">
+  LibWeb implements a complete CSS3 engine:
+  
+  **Subsystems:**
+  - **Parser**: CSS syntax parsing
+  - **Selectors**: Complex selector matching
+  - **Cascade**: Specificity and inheritance
+  - **StyleCompute**: Property computation
+  - **Values**: All CSS value types
+  - **Properties**: Individual property handlers
+  
+  **Major Features:**
+  - Flexbox and Grid layouts
+  - CSS animations and transitions
+  - CSS transforms (2D and 3D)
+  - Media queries
+  - Custom properties (CSS variables)
+  - Pseudo-classes and pseudo-elements
+</Accordion>
+
+### Layout Engine
+
+LibWeb's layout engine implements the CSS box model and positioning schemes.
+
+<Accordion title="Layout Nodes">
+  ```cpp
+  class Layout::Node {
+      virtual void compute_width();
+      virtual void compute_height();
+      virtual void layout(LayoutMode);
+      
+      Box const& box_model() const;
+      CSSPixelRect absolute_rect() const;
+  };
+  ```
+  
+  **Layout Types:**
+  - `BlockContainer`: Block formatting context
+  - `InlineNode`: Inline content
+  - `FlexFormattingContext`: Flexbox layout
+  - `GridFormattingContext`: CSS Grid layout
+  - `TableBox`: Table layout
+  - `SVGBox`: SVG element layout
+</Accordion>
+
+## JavaScript Integration
+
+<ParamField path="Bindings" type="namespace">
+  Automatic bindings between C++ and JavaScript using Web IDL.
+  
+  LibWeb uses `.idl` files to generate JavaScript bindings:
+  
+  ```idl
+  interface Document : Node {
+      readonly attribute DOMString URL;
+      readonly attribute Element? documentElement;
+      Element? getElementById(DOMString elementId);
+  };
+  ```
+  
+  The IDL compiler generates wrapper classes for JavaScript access.
+  
+  **Location:** `LibWeb/Bindings/`
+</ParamField>
+
+### Web APIs
+
+<Info>
+  **Implemented Web APIs:**
+  - **Canvas 2D**: 2D drawing context
+  - **WebGL**: 3D graphics rendering
+  - **Web Storage**: localStorage and sessionStorage
+  - **Fetch API**: Modern HTTP requests
+  - **WebSockets**: Bidirectional communication
+  - **Web Animations**: Animation API
+  - **Intersection Observer**: Viewport observation
+  - **Mutation Observer**: DOM change observation
+  - **File API**: File and Blob handling
+  - **Crypto API**: Web Cryptography
+</Info>
+
+## Major Subsystems
+
+### ARIA (Accessibility)
+
+<ParamField path="ARIA" type="namespace">
+  Accessible Rich Internet Applications support.
+  
+  ```cpp
+  namespace Web::ARIA {
+      enum class Role {
+          Button, Checkbox, Link, Heading,
+          Dialog, Menu, Navigation, // ...
+      };
+      
+      // ARIA properties and states
+      // aria-label, aria-hidden, aria-expanded, etc.
+  }
+  ```
+  
+  **Location:** `LibWeb/ARIA/`
+</ParamField>
+
+### Animations
+
+<Accordion title="Web Animations API">
+  ```cpp
+  class Animation {
+      void play();
+      void pause();
+      void cancel();
+      void finish();
+      
+      double currentTime() const;
+      void set_currentTime(double);
+      
+      AnimationPlayState playState() const;
+  };
+  
+  class KeyframeEffect {
+      void set_target(Element*);
+      void set_keyframes(Vector<Keyframe>);
+  };
+  ```
+  
+  **Location:** `LibWeb/Animations/`
+</Accordion>
+
+### CSS Subsystems
+
+<Accordion title="CSS Implementation">
+  **Core Components:**
+  
+  - `CSSStyleSheet`: Stylesheet representation
+  - `CSSRule`: Style rules (selectors + declarations)
+  - `CSSStyleDeclaration`: Property declarations
+  - `StyleResolver`: Matching and cascade
+  - `StyleComputer`: Computed value generation
+  
+  **Property System:**
+  - Length values (px, em, rem, %, vh, vw)
+  - Colors (named, hex, rgb(), hsl(), etc.)
+  - Transforms and animations
+  - Filters and effects
+  
+  **Location:** `LibWeb/CSS/`
+</Accordion>
+
+### Fetch API
+
+<ParamField path="Fetch" type="namespace">
+  Modern HTTP request API.
+  
+  ```cpp
+  class Request {
+      String const& url() const;
+      String const& method() const;
+      Headers const& headers() const;
+  };
+  
+  class Response {
+      u16 status() const;
+      String status_text() const;
+      Headers const& headers() const;
+      
+      Promise<ByteBuffer> array_buffer();
+      Promise<String> text();
+      Promise<JsonValue> json();
+  };
+  ```
+  
+  **Location:** `LibWeb/Fetch/`
+</ParamField>
+
+### WebGL
+
+<Accordion title="WebGL Support">
+  LibWeb provides WebGL 1.0 support through LibGL:
+  
+  ```cpp
+  class WebGLRenderingContext {
+      // OpenGL ES 2.0 compatible API
+      void clear(GLbitfield mask);
+      void clearColor(GLfloat r, GLfloat g, GLfloat b, GLfloat a);
+      
+      WebGLProgram createProgram();
+      WebGLShader createShader(GLenum type);
+      
+      void drawArrays(GLenum mode, GLint first, GLsizei count);
+      void drawElements(GLenum mode, GLsizei count, GLenum type, GLintptr offset);
+  };
+  ```
+  
+  WebGL calls are translated to LibGL OpenGL operations.
+</Accordion>
+
+## Parsing and Tokenization
+
+### HTML Parser
+
+<Accordion title="HTML5 Parser">
+  LibWeb implements the HTML5 parsing algorithm:
+  
+  - **Tokenization**: Character stream to tokens
+  - **Tree Construction**: Token stream to DOM
+  - **Error Recovery**: Robust error handling
+  - **Foreign Content**: SVG and MathML integration
+  
+  The parser handles:
+  - Document fragments
+  - Script execution during parsing
+  - Character encodings
+  - Quirks mode detection
+  
+  **Location:** `LibWeb/HTML/Parser/`
+</Accordion>
+
+### CSS Parser
+
+Robust CSS3 parsing with error recovery and vendor prefix support.
+
+## Event System
+
+<ParamField path="EventTarget" type="class">
+  Base class for objects that can receive events.
+  
+  ```cpp
+  class EventTarget {
+      void addEventListener(String const& type, 
+                           EventListener*, 
+                           bool use_capture = false);
+      
+      void removeEventListener(String const& type,
+                              EventListener*,
+                              bool use_capture = false);
+      
+      bool dispatchEvent(Event&);
+  };
+  ```
+</ParamField>
+
+<Accordion title="Event Types">
+  **Mouse Events:**
+  - `click`, `dblclick`
+  - `mousedown`, `mouseup`, `mousemove`
+  - `mouseenter`, `mouseleave`
+  
+  **Keyboard Events:**
+  - `keydown`, `keyup`, `keypress`
+  
+  **Form Events:**
+  - `submit`, `change`, `input`, `focus`, `blur`
+  
+  **Document Events:**
+  - `DOMContentLoaded`, `load`, `unload`
+  
+  **Custom Events:**
+  - User-defined event types
+</Accordion>
+
+## Rendering Pipeline
+
+<Accordion title="Paint System">
+  The rendering pipeline transforms layout to pixels:
+  
+  1. **Layout**: Compute positions and sizes
+  2. **Stacking Context**: Z-order determination
+  3. **Paint**: Generate display list
+  4. **Composite**: Layer composition
+  
+  ```cpp
+  class Paintable {
+      virtual void paint(PaintContext&) const;
+      virtual HitTestResult hit_test(CSSPixelPoint) const;
+  };
+  ```
+  
+  **Location:** `LibWeb/Painting/`
+</Accordion>
+
+## Storage APIs
+
+<ParamField path="Storage" type="class">
+  Web Storage (localStorage/sessionStorage) implementation.
+  
+  ```cpp
+  class Storage {
+      size_t length() const;
+      String key(size_t index) const;
+      String get_item(String const& key) const;
+      void set_item(String const& key, String const& value);
+      void remove_item(String const& key);
+      void clear();
+  };
+  ```
+  
+  **Location:** `LibWeb/HTML/Storage.h`
+</ParamField>
+
+## SVG Support
+
+Scalable Vector Graphics rendering integrated into the layout engine.
+
+<Info>
+  **SVG Features:**
+  - Basic shapes (rect, circle, ellipse, line, polygon)
+  - Paths with full path data support
+  - Text rendering
+  - Gradients and patterns
+  - Transformations
+  - Clipping and masking
+  
+  **Location:** `LibWeb/SVG/`
+</Info>
+
+## Encoding and URLs
+
+<ParamField path="URL" type="class">
+  URL parsing and manipulation.
+  
+  ```cpp
+  class URL {
+      String scheme() const;
+      String host() const;
+      u16 port() const;
+      String path() const;
+      String query() const;
+      String fragment() const;
+      
+      static URL parse(String const&);
+  };
+  ```
+  
+  **Location:** `LibWeb/DOMURL/`
+</ParamField>
+
+## Cookie Management
+
+<Accordion title="Cookie API">
+  ```cpp
+  class Cookie {
+      String name;
+      String value;
+      String domain;
+      String path;
+      Core::DateTime expiry_time;
+      bool secure;
+      bool http_only;
+      SameSite same_site;
+  };
+  ```
+  
+  Full cookie jar with domain matching and security policies.
+  
+  **Location:** `LibWeb/Cookie/`
+</Accordion>
+
+## FileAPI
+
+<ParamField path="File" type="class">
+  File and Blob handling for file uploads and processing.
+  
+  ```cpp
+  class Blob {
+      u64 size() const;
+      String type() const;
+      Promise<String> text();
+      Promise<ByteBuffer> array_buffer();
+  };
+  
+  class File : public Blob {
+      String name() const;
+      i64 last_modified() const;
+  };
+  ```
+  
+  **Location:** `LibWeb/FileAPI/`
+</ParamField>
+
+## Performance and Timing
+
+<Accordion title="Performance APIs">
+  - **Performance API**: Navigation and resource timing
+  - **requestAnimationFrame**: Animation scheduling
+  - **Intersection Observer**: Viewport-based loading
+  - **Resize Observer**: Element size changes
+  
+  Used for performance monitoring and efficient rendering.
+</Accordion>
+
+## Usage Example
+
+```cpp
+// Create a document
+auto document = DOM::Document::create();
+
+// Create elements
+auto body = document->create_element("body");
+auto div = document->create_element("div");
+auto text = document->create_text_node("Hello, World!");
+
+// Build DOM tree
+div->append_child(text);
+body->append_child(div);
+document->append_child(body);
+
+// Set attributes
+div->set_attribute("class", "greeting");
+div->set_attribute("id", "main");
+
+// Query elements
+auto element = document->get_element_by_id("main");
+
+// Style computation and layout
+document->update_style();
+document->update_layout();
+
+// Render to bitmap
+auto bitmap = document->paint_to_bitmap();
+```
+
+## Source Location
+
+**Directory:** `Userland/Libraries/LibWeb/`
+
+**Major Subdirectories:**
+- `DOM/`: Document Object Model
+- `HTML/`: HTML elements and parsing
+- `CSS/`: Style system
+- `Layout/`: Layout engine
+- `Painting/`: Rendering
+- `Bindings/`: JavaScript integration
+- `Fetch/`: Network requests
+- `WebGL/`: 3D graphics
+- `SVG/`: Vector graphics
+- `ARIA/`: Accessibility
+- `Animations/`: Web Animations API

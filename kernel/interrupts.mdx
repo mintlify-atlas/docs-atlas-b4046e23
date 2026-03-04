@@ -1,0 +1,407 @@
+---
+title: Interrupt Handling
+description: Interrupt management, IRQ handling, and interrupt controllers in the SerenityOS kernel
+---
+
+The SerenityOS kernel implements a flexible interrupt handling system that manages hardware and software interrupts across multiple architectures. The interrupt subsystem is located in `Kernel/Interrupts/` and provides a unified interface for interrupt management.
+
+## Core Architecture
+
+### GenericInterruptHandler
+
+The base class for all interrupt handlers (`Kernel/Interrupts/GenericInterruptHandler.h`):
+
+```cpp
+class GenericInterruptHandler {
+public:
+    virtual bool handle_interrupt() = 0;
+    virtual bool eoi() = 0;  // End of interrupt
+    
+    u8 interrupt_number() const;
+    virtual HandlerType type() const = 0;
+    virtual StringView purpose() const = 0;
+    virtual StringView controller() const = 0;
+    
+    virtual size_t sharing_devices_count() const = 0;
+    virtual bool is_shared_handler() const = 0;
+};
+```
+
+Key features:
+- Abstract interface for all interrupt handlers
+- Per-CPU interrupt call counters
+- Registration and unregistration management
+- Support for shared interrupt lines
+
+### Handler Types
+
+The kernel supports multiple handler types:
+
+```cpp
+enum class HandlerType : u8 {
+    IRQHandler = 1,              // Standard IRQ handler
+    SharedIRQHandler = 2,        // Multiple devices sharing an IRQ
+    UnhandledInterruptHandler = 3, // Catch-all for unhandled interrupts
+    SpuriousInterruptHandler = 4   // Spurious interrupt detection
+};
+```
+
+<Info>
+Using the appropriate handler type ensures correct interrupt routing and statistics tracking.
+</Info>
+
+## IRQ Handlers
+
+### IRQHandler
+
+Standard interrupt handler for hardware devices (`Kernel/Interrupts/IRQHandler.h`):
+
+```cpp
+class IRQHandler : public GenericInterruptHandler {
+public:
+    virtual bool handle_irq() = 0;
+    
+    void enable_irq();
+    void disable_irq();
+    
+protected:
+    explicit IRQHandler(u8 irq);
+};
+```
+
+Device drivers derive from `IRQHandler` and implement `handle_irq()`:
+
+```cpp
+class MyDeviceHandler : public IRQHandler {
+public:
+    MyDeviceHandler() : IRQHandler(MY_IRQ_NUMBER) {}
+    
+    virtual bool handle_irq() override {
+        // Read device status
+        // Process interrupt
+        // Clear interrupt source
+        return true;  // Interrupt handled
+    }
+};
+```
+
+### Return Value Semantics
+
+The `handle_interrupt()` return value indicates whether the handler processed the interrupt:
+- `true`: Interrupt was handled by this handler
+- `false`: Interrupt was not from this device (important for shared IRQs)
+
+### Enabling and Disabling IRQs
+
+```cpp
+// Disable IRQ during critical section
+my_handler.disable_irq();
+// ... critical work ...
+my_handler.enable_irq();
+```
+
+IRQs can also be temporarily disabled using `InterruptDisabler`:
+
+```cpp
+#include <Kernel/Interrupts/InterruptDisabler.h>
+
+{
+    InterruptDisabler disabler;
+    // All interrupts disabled in this scope
+} // Interrupts restored
+```
+
+<Warning>
+Prolonged interrupt disabling can cause system latency and missed interrupts. Keep critical sections short.
+</Warning>
+
+## Shared Interrupts
+
+### SharedIRQHandler
+
+Multiple devices can share an interrupt line using `SharedIRQHandler` (`Kernel/Interrupts/SharedIRQHandler.h`):
+
+```cpp
+class SharedIRQHandler : public GenericInterruptHandler {
+public:
+    void register_handler(IRQHandler&);
+    void unregister_handler(IRQHandler&);
+    
+    virtual bool handle_interrupt() override {
+        bool handled = false;
+        for (auto& handler : m_handlers) {
+            if (handler.handle_irq())
+                handled = true;
+        }
+        return handled;
+    }
+};
+```
+
+When an interrupt occurs on a shared line:
+1. Each registered handler is invoked
+2. Each handler checks if its device triggered the interrupt
+3. Handler returns true only if it processed the interrupt
+4. The shared handler returns true if any handler processed it
+
+### PCI IRQ Handlers
+
+`PCIIRQHandler` (`Kernel/Interrupts/PCIIRQHandler.h`) extends `IRQHandler` for PCI devices, handling:
+- MSI (Message Signaled Interrupts)
+- MSI-X (Extended MSI)
+- Legacy INTx interrupts
+
+## Special Interrupt Handlers
+
+### UnhandledInterruptHandler
+
+Catches interrupts with no registered handler:
+
+```cpp
+class UnhandledInterruptHandler : public GenericInterruptHandler {
+public:
+    virtual bool handle_interrupt() override {
+        // Log unhandled interrupt
+        dbgln("Unhandled interrupt: {}", interrupt_number());
+        return false;
+    }
+};
+```
+
+### SpuriousInterruptHandler
+
+Detects and handles spurious interrupts:
+
+```cpp
+class SpuriousInterruptHandler : public GenericInterruptHandler {
+    // Spurious interrupts occur when:
+    // - Edge-triggered interrupt is deasserted before ACK
+    // - IRQ line has electrical noise
+    // - Interrupt controller issues duplicate interrupt
+};
+```
+
+## Interrupt Controllers
+
+SerenityOS supports multiple interrupt controller architectures:
+
+### x86_64 Controllers
+
+**PIC (Programmable Interrupt Controller)** (`Kernel/Arch/x86_64/Interrupts/PIC.h`)
+- Legacy 8259 PIC support
+- Two cascaded controllers (master/slave)
+- 15 IRQ lines total
+- Used on older systems or as fallback
+
+**APIC (Advanced Programmable Interrupt Controller)** (`Kernel/Arch/x86_64/Interrupts/APIC.h`)
+- Modern interrupt controller
+- Supports multiple CPUs
+- Local APIC per CPU
+- I/O APIC for peripheral interrupts
+
+**IOAPIC** (`Kernel/Arch/x86_64/Interrupts/IOAPIC.h`)
+- Routes interrupts to CPU Local APICs
+- Supports interrupt remapping
+- Programmable interrupt distribution
+
+<Accordion title="APIC vs PIC">
+**PIC Limitations:**
+- Maximum 15 IRQs
+- No SMP support
+- Fixed priority scheme
+- Edge and level-triggered modes
+
+**APIC Advantages:**
+- Up to 256 interrupt vectors
+- Per-CPU interrupt delivery
+- Advanced priority and routing
+- Better performance on SMP systems
+- Message-signaled interrupts (MSI)
+</Accordion>
+
+### ARM64 Controllers
+
+**GICv2 (Generic Interrupt Controller v2)** (`Kernel/Arch/aarch64/Interrupts/GICv2.h`)
+- Standard ARM interrupt controller
+- Supports up to 8 CPUs
+- 1020 interrupt sources
+
+**GICv3** (`Kernel/Arch/aarch64/Interrupts/GICv3.h`)
+- Modern ARM interrupt controller
+- Improved scalability (supports more CPUs)
+- Interrupt routing to specific CPUs
+- LPI (Locality-specific Peripheral Interrupts)
+
+### RISC-V Controllers
+
+**PLIC (Platform-Level Interrupt Controller)** (`Kernel/Arch/riscv64/Interrupts/PLIC.h`)
+- Standard RISC-V interrupt controller
+- Programmable priorities
+- Per-hart (hardware thread) interrupt delivery
+
+## Interrupt Flow
+
+### Interrupt Processing Sequence
+
+1. **Hardware Event**: Device asserts interrupt line
+2. **Controller**: Interrupt controller receives signal
+3. **CPU**: Controller signals CPU interrupt
+4. **Handler Entry**: CPU vectors to interrupt handler
+5. **Handler Dispatch**: Kernel identifies handler for IRQ number
+6. **Device Handler**: Device-specific handler processes interrupt
+7. **EOI**: Handler sends End-of-Interrupt to controller
+8. **Return**: Resume interrupted execution
+
+```
+Device → IRQ Line → Interrupt Controller → CPU
+                                          ↓
+                                    GenericInterruptHandler::handle_interrupt()
+                                          ↓
+                                    IRQHandler::handle_irq()
+                                          ↓
+                                    Device Driver Processing
+                                          ↓
+                                    EOI to Controller
+```
+
+### End of Interrupt (EOI)
+
+After processing an interrupt, the handler must signal completion:
+
+```cpp
+virtual bool eoi() override {
+    // Signal interrupt controller
+    m_responsible_irq_controller->eoi(*this);
+    return true;
+}
+```
+
+Failure to send EOI prevents further interrupts from that source.
+
+## Interrupt Statistics
+
+The kernel tracks interrupt statistics per CPU:
+
+```cpp
+ReadonlySpan<u32> per_cpu_call_counts() const;
+void increment_call_count();
+```
+
+Statistics include:
+- Total interrupt count per IRQ
+- Per-CPU interrupt counts
+- Handler invocation counts
+
+Access via `/sys/kernel/interrupts` in the filesystem.
+
+## Registration and Lifecycle
+
+### Registering an IRQ Handler
+
+```cpp
+class MyDevice : public IRQHandler {
+public:
+    MyDevice(u8 irq) : IRQHandler(irq) {
+        register_interrupt_handler();
+        enable_irq();
+    }
+    
+    ~MyDevice() {
+        disable_irq();
+        unregister_interrupt_handler();
+    }
+};
+```
+
+### Handler Lifecycle
+
+1. **Construction**: Create handler with IRQ number
+2. **Registration**: Call `register_interrupt_handler()`
+3. **Enable**: Call `enable_irq()` to start receiving interrupts
+4. **Active**: Handle interrupts via `handle_irq()`
+5. **Disable**: Call `disable_irq()` before cleanup
+6. **Unregister**: Call `unregister_interrupt_handler()`
+7. **Destruction**: Destroy handler object
+
+<Warning>
+Always disable and unregister handlers before destruction to prevent use-after-free bugs.
+</Warning>
+
+## Architecture-Specific Handling
+
+While the `GenericInterruptHandler` interface is architecture-independent, the underlying implementation varies:
+
+**x86_64**:
+- Uses IDT (Interrupt Descriptor Table)
+- 256 interrupt vectors
+- Vectors 0-31: CPU exceptions
+- Vectors 32-255: Hardware interrupts
+
+**AArch64**:
+- Exception vector table
+- Four exception levels (EL0-EL3)
+- IRQ and FIQ interrupt types
+
+**RISC-V**:
+- Trap vector table
+- Machine and Supervisor mode interrupts
+- Interrupt delegation to S-mode
+
+## Best Practices
+
+### Handler Implementation
+
+1. **Minimize Work**: Do minimal work in interrupt context
+2. **Defer Processing**: Use work queues for heavy processing
+3. **Return Quickly**: Long handlers increase interrupt latency
+4. **Check Source**: Verify interrupt is from your device (for shared IRQs)
+5. **Clear Source**: Acknowledge interrupt at device level
+
+### Synchronization
+
+```cpp
+class MyDevice : public IRQHandler {
+    Spinlock<LockRank::None> m_lock;
+    
+public:
+    void regular_function() {
+        SpinlockLocker locker(m_lock);
+        // Access shared data
+    }
+    
+    virtual bool handle_irq() override {
+        SpinlockLocker locker(m_lock);
+        // Access same shared data safely
+        return true;
+    }
+};
+```
+
+<Info>
+Use spinlocks, not mutexes, for synchronization between interrupt handlers and regular code. Mutexes may sleep, which is forbidden in interrupt context.
+</Info>
+
+## Debugging Interrupts
+
+Useful debugging techniques:
+
+```cpp
+// Log interrupt calls
+virtual bool handle_irq() override {
+    dbgln("MyDevice IRQ {} triggered", interrupt_number());
+    return handle_device_interrupt();
+}
+
+// Check interrupt counts
+auto counts = handler.per_cpu_call_counts();
+for (size_t i = 0; i < counts.size(); i++)
+    dbgln("CPU {}: {} interrupts", i, counts[i]);
+```
+
+## Related Files
+
+- `Kernel/Interrupts/GenericInterruptHandler.{h,cpp}` - Base handler class
+- `Kernel/Interrupts/IRQHandler.{h,cpp}` - Standard IRQ handler
+- `Kernel/Interrupts/SharedIRQHandler.{h,cpp}` - Shared interrupt support
+- `Kernel/Interrupts/InterruptDisabler.h` - Interrupt disabling utility
+- `Kernel/Arch/*/Interrupts/` - Architecture-specific controllers

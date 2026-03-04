@@ -1,0 +1,127 @@
+---
+title: "Introduction to SerenityOS"
+description: "A graphical Unix-like operating system for 64-bit x86, Arm, and RISC-V computers - a love letter to '90s user interfaces with a custom Unix-like core"
+---
+
+## What is SerenityOS?
+
+SerenityOS is a graphical Unix-like operating system for **64-bit x86, Arm, and RISC-V computers**. It's a love letter to '90s user interfaces with a custom Unix-like core that flatters with sincerity by stealing beautiful ideas from various other systems.
+
+<Note>
+The goal is a marriage between the aesthetic of late-1990s productivity software and the power-user accessibility of late-2000s *nix. This is a system by us, for us, based on the things we like.
+</Note>
+
+## Key Features
+
+SerenityOS is a complete operating system built from scratch - everything from the kernel to the applications is right in the repository, with no extra dependencies:
+
+### Core System
+
+- **Modern 64-bit kernel** with pre-emptive multi-threading
+- **Security features** including hardware protections, limited userland capabilities, W^X memory, `pledge` & `unveil`, (K)ASLR, OOM-resistance, and state-of-the-art TLS algorithms
+- **System services** including WindowServer, LoginServer, AudioServer, WebServer, RequestServer, CrashServer, and modern IPC
+- **Good POSIX compatibility** with LibC, Shell, syscalls, signals, pseudoterminals, filesystem notifications, and standard Unix utilities
+
+### Web & Networking
+
+- **Full-featured browser** with JavaScript, WebAssembly, and more (check the spec compliance for [JS](https://serenityos.github.io/libjs-website/test262/), [CSS](https://css.tobyase.de/), and [Wasm](https://serenityos.github.io/libjs-website/wasm/))
+- **Network stack** with support for IPv4, TCP, UDP
+- **Network protocols** including DNS, HTTP, Gemini, IMAP, NTP
+
+### File Systems & Storage
+
+- **POSIX-like virtual file systems** (/proc, /dev, /sys, /tmp)
+- **ext2 file system** support
+- **File format support** for PNG, JPEG, GIF, MP3, WAV, FLAC, ZIP, TAR, PDF, QOI, Gemini, and more
+
+### Development Tools
+
+<CardGroup cols={2}>
+  <Card title="Profiling & Debugging" icon="bug">
+    Kernel-supported profiling, CrashReporter, and interactive GUI playground
+  </Card>
+  <Card title="HackStudio IDE" icon="code">
+    Full IDE for C++ development and more
+  </Card>
+  <Card title="Development Utilities" icon="wrench">
+    HexEditor and comprehensive debugging tools
+  </Card>
+  <Card title="Rich Libraries" icon="book">
+    Libraries for cryptography, OpenGL, audio, JavaScript, GUI, and more
+  </Card>
+</CardGroup>
+
+### Applications & Games
+
+- **Everyday applications** including Spreadsheet with JavaScript, TextEditor, Terminal, PixelPaint, multimedia viewers and players, Mail, Assistant, Calculator
+- **Games** including Solitaire, Minesweeper, 2048, chess, Conway's Game of Life
+- **Demos** including CatDog, Starfield, Eyes, mandelbrot set, WidgetGallery
+
+### Design Philosophy
+
+<Info>
+SerenityOS features a unified style and design philosophy with a flexible theming system and custom bitmap and vector fonts available at [fonts.serenityos.net](https://fonts.serenityos.net/font-family).
+</Info>
+
+## Ports Collection
+
+In addition to the built-in software, there are **over three hundred ports** of popular open-source software, including:
+
+- Games
+- Compilers
+- Unix tools
+- Multimedia applications
+- And much more
+
+See the [available ports documentation](https://github.com/SerenityOS/serenity/blob/master/Ports/AvailablePorts.md) for the complete list.
+
+## Built From Scratch
+
+<Warning>
+Every component of SerenityOS - from the kernel to the browser to the games - is built from scratch by the community. This maximizes hackability, accountability, and fun!
+</Warning>
+
+All of the features listed above are right in the repository, with no extra dependencies, built from-scratch by the SerenityOS community.
+
+## Platform Support
+
+SerenityOS supports cross-compilation builds from:
+
+- Linux
+- macOS
+- Windows (with WSL2)
+- Many other *Nixes
+
+The build system will launch a QEMU instance running the OS with hardware or software virtualization enabled as supported.
+
+## Community & Resources
+
+<CardGroup cols={2}>
+  <Card title="Join Discord" icon="discord" href="https://serenityos.org/discord">
+    Join our active Discord community
+  </Card>
+  <Card title="Watch Development" icon="youtube" href="https://youtube.com/andreaskling">
+    Andreas Kling's YouTube channel
+  </Card>
+  <Card title="Man Pages" icon="book" href="https://man.serenityos.org">
+    Browse the online manual pages
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/SerenityOS/serenity">
+    View the source code and contribute
+  </Card>
+</CardGroup>
+
+## License
+
+SerenityOS is licensed under a **2-clause BSD license**, making it free and open source software.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build and run SerenityOS
+  </Card>
+  <Card title="FAQ" icon="question" href="/faq">
+    Common questions answered
+  </Card>
+</CardGroup>

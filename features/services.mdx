@@ -1,0 +1,342 @@
+---
+title: System Services
+description: Core system services and daemons that power SerenityOS
+---
+
+SerenityOS uses a modern service-oriented architecture with a robust Inter-Process Communication (IPC) system. Each service runs as a separate process, providing isolation and stability.
+
+## Core System Services
+
+### WindowServer
+
+The display server responsible for managing all graphical output and user interaction.
+
+<Accordion title="Key Responsibilities">
+  - Window management and composition
+  - Input event distribution (mouse, keyboard, touch)
+  - Display output and rendering coordination
+  - Desktop environment and taskbar integration
+  - Window decorations and themes
+  - Cursor management
+</Accordion>
+
+<Info>
+  WindowServer runs with appropriate privileges and coordinates with the kernel's graphics subsystem.
+</Info>
+
+### LoginServer
+
+Manages user authentication and session initialization.
+
+**Features:**
+- User login and authentication
+- Session creation and management
+- Graphical login interface
+- User switching capabilities
+- Integration with the security subsystem
+
+### SystemServer
+
+The init system responsible for starting and managing system services.
+
+- Service lifecycle management
+- Dependency resolution
+- Service socket management
+- Automatic service respawning
+- System startup orchestration
+
+## Audio & Multimedia Services
+
+### AudioServer
+
+<CardGroup cols={1}>
+  <Card title="Audio Subsystem" icon="volume">
+    Centralized audio mixing and playback service
+  </Card>
+</CardGroup>
+
+**Capabilities:**
+- Multi-client audio mixing
+- Sample rate conversion
+- Volume control and normalization
+- Multiple audio format support (WAV, MP3, FLAC)
+- Per-application audio routing
+- Low-latency audio processing
+
+### ImageDecoder
+
+Sandboxed image decoding service for security and stability.
+
+<Accordion title="Supported Formats">
+  - PNG (Portable Network Graphics)
+  - JPEG (Joint Photographic Experts Group)
+  - GIF (Graphics Interchange Format)
+  - BMP (Bitmap)
+  - ICO (Icon)
+  - PBM/PGM/PPM (Portable Anymap)
+  - QOI (Quite OK Image)
+  - TGA (Targa)
+  - And more
+</Accordion>
+
+**Security Features:**
+- Each decode operation runs in a fresh process
+- Strong sandboxing with `pledge()` and `unveil()`
+- Memory-safe decoding implementations
+- Automatic cleanup on completion
+
+## Network Services
+
+<CardGroup cols={2}>
+  <Card title="RequestServer" icon="globe">
+    HTTP/HTTPS/Gemini request handling and network operations
+  </Card>
+  <Card title="LookupServer" icon="magnifying-glass">
+    DNS resolution and hostname lookup service
+  </Card>
+  <Card title="WebServer" icon="server">
+    Built-in HTTP server for local hosting
+  </Card>
+  <Card title="DHCPClient" icon="network-wired">
+    Dynamic IP address configuration
+  </Card>
+</CardGroup>
+
+### RequestServer
+
+Handles all outgoing network requests for web content and other applications.
+
+**Supported Protocols:**
+- HTTP/1.1
+- HTTPS (TLS 1.2, 1.3)
+- Gemini
+- File protocol
+
+**Features:**
+- Connection pooling and reuse
+- Cookie management
+- Proxy support
+- Content negotiation
+- Download management
+
+### LookupServer
+
+System-wide DNS resolver with caching capabilities.
+
+- DNS query handling (A, AAAA, CNAME, MX, etc.)
+- Local hosts file resolution
+- Query caching for performance
+- Multiple nameserver support
+- DNSSEC validation (in development)
+
+### TelnetServer
+
+Provides telnet server functionality for remote terminal access.
+
+<Info>
+  Network services are sandboxed and run with minimal privileges required for their operation.
+</Info>
+
+## Web Services
+
+### WebContent
+
+Sandboxed web rendering process that powers the Browser application.
+
+<Accordion title="Architecture Details">
+  Each browser tab runs in its own WebContent process for isolation:
+  
+  - HTML/CSS rendering engine (LibWeb)
+  - JavaScript execution (LibJS)
+  - WebAssembly support
+  - DOM manipulation
+  - Canvas and SVG rendering
+  
+  Communicates only through:
+  - RequestServer for network access
+  - ImageDecoder for image processing
+  - IPC with the Browser process
+</Accordion>
+
+**Security:**
+- Per-tab process isolation
+- Unprivileged user execution
+- Strict `pledge()` and `unveil()` restrictions
+- No direct network or filesystem access
+
+### WebWorker
+
+Handles Web Worker threads for background JavaScript execution in web pages.
+
+### WebDriver
+
+Implements the WebDriver protocol for automated browser testing.
+
+- Browser automation support
+- Testing framework integration
+- Selenium-compatible API
+- Automated UI testing capabilities
+
+## Storage & Data Services
+
+### SQLServer
+
+Embedded SQL database service for applications requiring structured data storage.
+
+**Features:**
+- SQL query execution
+- Transaction support
+- Multi-client access
+- Data persistence
+- Query optimization
+
+### FileSystemAccessServer
+
+Mediates file system access with security controls.
+
+- File picker integration
+- Permission management
+- Sandboxed file access
+- Secure file operations
+- User consent workflows
+
+### ConfigServer
+
+Centralized configuration management service.
+
+- System-wide settings storage
+- Per-application configuration
+- Configuration change notifications
+- Atomic configuration updates
+- Default value management
+
+## Desktop Services
+
+### Taskbar
+
+Provides the system taskbar and task switching functionality.
+
+- Application launcher
+- Running application indicators
+- System tray integration
+- Clock display
+- Quick settings access
+- Workspace switching
+
+### NotificationServer
+
+System notification management and display.
+
+- Desktop notifications
+- Notification queuing
+- Priority management
+- Action buttons support
+- Do Not Disturb mode
+- Notification history
+
+### Clipboard
+
+System-wide clipboard management for cut, copy, and paste operations.
+
+- Text and image clipboard support
+- Multiple MIME type handling
+- Clipboard history (optional)
+- Inter-application data transfer
+
+## Utility Services
+
+### CrashDaemon
+
+Automatically handles application crashes.
+
+- Crash detection and logging
+- Core dump generation
+- Stack trace collection
+- Crash reporter integration
+- Debugging information preservation
+
+### LaunchServer
+
+Application launcher and file association manager.
+
+- File type associations
+- Default application handling
+- URL protocol handlers
+- Application spawning
+- Desktop entry management
+
+### ChessEngine
+
+Dedicated chess engine service for the Chess application.
+
+- Chess move calculation
+- AI opponent logic
+- Position evaluation
+- Game state management
+
+### SpiceAgent
+
+Integration with QEMU/SPICE for enhanced virtualization support.
+
+- Clipboard sharing with host
+- Display resolution synchronization
+- File transfer capabilities
+- Enhanced input handling
+
+### DeviceMapper
+
+Manages device node creation and device events.
+
+- Dynamic device node creation
+- Device hotplug handling
+- Permission management
+- Device enumeration
+
+### NetworkServer
+
+Network interface and routing management.
+
+- Network interface configuration
+- Route table management
+- Network status monitoring
+- Connection state tracking
+
+### KeyboardPreferenceLoader
+
+Loads and applies keyboard preferences at system startup.
+
+### FileOperation
+
+Handles long-running file operations in the background.
+
+- Copy/move operations
+- Progress tracking
+- Cancellation support
+- Error handling
+
+### EchoServer
+
+Simple echo server for testing and development purposes.
+
+## Service Communication
+
+<Info>
+  Services communicate using SerenityOS's IPC (Inter-Process Communication) system, which provides type-safe, efficient message passing between processes.
+</Info>
+
+All services are designed with the following principles:
+- **Isolation**: Each service runs in its own process
+- **Sandboxing**: Services use `pledge()` and `unveil()` for security
+- **Privilege Separation**: Services run with minimal required privileges
+- **Failure Isolation**: Service crashes don't affect other services
+- **Clean IPC**: Type-safe communication through generated IPC interfaces
+
+## Service Management
+
+Services are managed by SystemServer, which reads configuration from service definition files. Services can be:
+
+- Started automatically at boot
+- Started on-demand via socket activation
+- Configured with dependencies
+- Automatically restarted on failure
+- Monitored for health and performance

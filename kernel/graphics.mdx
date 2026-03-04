@@ -1,0 +1,346 @@
+---
+title: Graphics Subsystem
+description: Kernel graphics subsystem architecture and display management
+---
+
+The Kernel Graphics Subsystem manages all graphics devices, framebuffers, hardware acceleration, and display output in SerenityOS.
+
+## Overview
+
+The graphics subsystem is responsible for:
+- Managing all supported video hardware
+- Providing framebuffer access to userspace (WindowServer)
+- Supporting kernel virtual consoles (TTY)
+- Managing display connectors and modes
+- Handling 3D rendering on supported hardware (future)
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:5`
+
+## Core Architecture
+
+### DisplayConnector Devices
+
+`DisplayConnector` (`Kernel/Devices/GPU/DisplayConnector.h`) is the primary abstraction for display outputs:
+
+<Info>
+DisplayConnector devices are inspired by Linux DRM's `drm_connector` structure, providing a unified interface to various display output types (VGA, HDMI, DisplayPort, DVI).
+</Info>
+
+**Key features:**
+- Represents hardware display output connectors
+- Can be standalone or grouped with other connectors
+- Accessible via `/dev/gpu/connectorX` device files
+- Supports `mmap()` for direct framebuffer access
+- Handles mode-setting operations
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:20`, `Kernel/Devices/GPU/DisplayConnector.h`
+
+### Device Nodes
+
+Each DisplayConnector creates a device file:
+- **Location:** `/dev/gpu/connectorX` (X = minor number)
+- **Major number:** 226 (fixed)
+- **Minor number:** Allocated incrementally
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:232`
+
+### Graphics Management
+
+`GraphicsManagement` (`Kernel/Devices/GPU/Management.h`) provides system-wide coordination:
+
+- GPU device enumeration and initialization
+- Display connector registration
+- Global graphics subsystem state
+- Device lifecycle management
+
+Reference: `Kernel/Devices/GPU/Management.h`
+
+## Hardware Framebuffers
+
+### Historical Context
+
+<Accordion title="VGA and PCI Evolution">
+Since ISA VGA adapters, video hardware has mapped framebuffer regions into physical memory:
+
+1. **ISA VGA era:** Fixed memory windows at low addresses
+2. **SuperVGA (90s):** High-resolution framebuffers at high memory addresses
+3. **PCI era:** Plug-and-Play with Base Address Registers (BARs)
+4. **Modern GPUs:** Complex devices with multiple memory regions
+
+PCI BARs allow the OS to discover framebuffer physical addresses and sizes without hardcoded values.
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:41`
+</Accordion>
+
+### Framebuffer Access
+
+The kernel provides direct framebuffer access while maintaining control through virtual memory:
+
+**Memory mapping mechanism:**
+1. DisplayConnector backed by special VMObject
+2. Physical VRAM address and size determined from PCI BAR
+3. Reserved shadow pages in main memory (same size as VRAM)
+4. Virtual mappings can point to either VRAM or shadow pages
+5. Kernel switches mappings when changing between graphics/console modes
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:101`
+
+<Info>
+This virtual memory trick allows userspace applications to continue drawing while the kernel switches between WindowServer and virtual console modes without interruption.
+</Info>
+
+**Key assumptions:**
+- Only used for direct framebuffer access (not batch buffers)
+- Maximum framebuffer dimensions must be known at initialization
+- Page-aligned framebuffer regions
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:106`
+
+### Pixel Format Requirements
+
+SerenityOS has strict framebuffer requirements:
+
+- **Required:** 32 bits-per-pixel (True color)
+- **Accepted:** 24 bpp with 4-byte alignment (alpha channel ignored)
+- **Rejected:** Palette modes, low color depths
+
+<Info>
+This requirement eliminates legacy cruft and ensures modern, high-quality graphics output. Systems without supported hardware fall back to VGA text mode.
+</Info>
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:134`
+
+## Supported GPU Drivers
+
+The kernel includes native drivers for several graphics adapters:
+
+### QEMU/Bochs Devices
+
+**bochs-display** (`Kernel/Devices/GPU/Bochs/`)
+- Simple framebuffer device with minimal registers
+- Common in QEMU virtual machines
+- Linear framebuffer access
+- Mode-setting via simple register interface
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:203`
+
+### VirtIO GPU
+
+**VirtIO GPU** (`Kernel/Devices/GPU/VirtIO/`)
+- Para-virtualized graphics device
+- Optimized for virtual machine environments
+- 2D and 3D acceleration support
+- Resource management and command submission
+
+Reference: `Kernel/Devices/GPU/VirtIO/`
+
+### VMWare SVGA
+
+**VMWare SVGA II** (`Kernel/Devices/GPU/VMWare/`)
+- VMWare's virtualized graphics adapter
+- Enhanced performance in VMWare environments
+- 2D acceleration capabilities
+- Guest-to-host communication
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:203`
+
+### Intel Graphics
+
+**Intel Graphics** (`Kernel/Devices/GPU/Intel/`)
+- Generation 4 (Gen4) hardware support
+- Native bare-metal driver
+- Display port management
+- Mode-setting and display configuration
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:203`, `Kernel/Devices/GPU/Intel/`
+
+### Generic DisplayConnector
+
+**GenericDisplayConnector** (`Kernel/Devices/GPU/Generic/`)
+- Uses pre-initialized framebuffer from bootloader
+- No hardware-specific initialization
+- Fallback when no native driver available
+- Can operate without PCI device attachment
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:29`
+
+### Experimental 3dfx Support
+
+**3dfx Voodoo** (`Kernel/Devices/GPU/3dfx/`)
+- Experimental legacy hardware support
+- 3D acceleration capabilities
+- Historical graphics hardware
+
+Reference: `Kernel/Devices/GPU/3dfx/`
+
+## Console Subsystem
+
+The graphics subsystem integrates with kernel virtual consoles:
+
+### Console Graphics
+
+**Console** (`Kernel/Devices/GPU/Console/`)
+- Kernel virtual console rendering
+- Text mode emulation on framebuffer
+- Switching between graphics and console modes
+- VGA text mode fallback (80x25)
+
+Reference: `Kernel/Devices/GPU/Console/`
+
+**Mode switching:**
+- WindowServer uses framebuffer in graphics mode
+- User switches to virtual console → kernel remaps to shadow pages
+- Console writes to real VRAM while WindowServer writes to shadow
+- Switch back → kernel copies shadow to VRAM and remaps
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:101`
+
+## Graphics Subsystem Configuration
+
+The kernel supports three initialization modes:
+
+### 1. Full Initialization (Default)
+
+- Iterate all PCI devices
+- Search for VGA-compatible and Display Controller devices
+- Initialize all supported GPUs with native drivers
+- Ignore bootloader framebuffer if native driver available
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:194`
+
+### 2. Bootloader Framebuffer Only
+
+- Use pre-initialized framebuffer from bootloader
+- No native driver initialization
+- Useful when native drivers not available
+
+### 3. No Graphics
+
+- Completely disable graphics subsystem
+- Fall back to VGA 80x25 text mode
+- System usable only through text console
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:207`
+
+## Userspace APIs
+
+### IOCTL Interface
+
+All graphics IOCTLs unified in `DisplayDevice` class:
+
+**Operations:**
+- Mode-setting (resolution, refresh rate, pixel format)
+- Framebuffer flushing
+- Display information queries
+- EDID reading
+- Connector state management
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:214`
+
+### System Calls
+
+<Accordion title="Supported Syscalls">
+**`mmap()`**
+- Map framebuffer into userspace address space
+- Provides direct pixel manipulation
+- Used by WindowServer for rendering
+- Safe multi-program access through virtual memory tricks
+
+**`ioctl()`**
+- Control DisplayConnector device
+- Change display modes
+- Flush framebuffer
+- Query capabilities
+
+**Not Supported:**
+- `read()` / `write()` - Obsolete for framebuffer devices
+- Removed during transition to current architecture
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:220`
+</Accordion>
+
+## Why No Legacy Support?
+
+SerenityOS deliberately excludes several legacy technologies:
+
+### No Pure VGA Support
+
+Pure VGA mode limitations:
+- Low resolution (640x480 maximum)
+- Poor modern monitor compatibility (blurry scaling)
+- Not suitable for modern desktop environment
+- Text mode console provided as ultimate fallback
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:132`
+
+### No Video BIOS Extensions (VBE)
+
+VBE rejected due to:
+
+**Technical issues:**
+- Requires real-mode (16-bit) BIOS calls from protected mode kernel
+- Solutions (real-mode switching, emulator, v8086, VT-x) all complex and risky
+- Not available on UEFI-only systems (no CSM)
+- Limited resolution/format support (hardcoded in option ROM)
+- Cannot read EDID for display capabilities
+- No confirmation of display compatibility
+
+**Philosophical reasons:**
+- Conflicts with maximizing usability and developer satisfaction
+- Legacy cruft limits flexibility
+- Better to write native drivers than work around BIOS limitations
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:157`
+
+## Current Limitations
+
+<Info>
+The graphics subsystem has some known limitations planned for future improvement:
+</Info>
+
+**Security:**
+- No locking on `mmap()` access to DisplayConnector devices
+- Malicious applications could compete with WindowServer for framebuffer control
+- Future: Implement proper access control
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:15`
+
+**Architecture:**
+- Virtual memory trick only works for direct framebuffer access
+- Adding batch buffers or VRAM objects may require redesign
+- Current approach assumes all rendering through mapped framebuffer
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:106`
+
+## Implementation Details
+
+### Device Detection
+
+Graphics device detection during boot:
+1. PCI bus enumeration
+2. Identify devices with class code for VGA/Display Controller
+3. Match against supported device IDs
+4. Initialize native driver or fall back to generic connector
+5. Register DisplayConnector devices
+
+### GPU Device Base
+
+`GPUDevice` (`Kernel/Devices/GPU/GPUDevice.h`) provides base functionality:
+- PCI device integration
+- Resource management (memory, I/O ports)
+- Interrupt handling
+- Display connector management
+
+Reference: `Kernel/Devices/GPU/GPUDevice.h`
+
+## Future Features
+
+Planned graphics subsystem enhancements:
+
+- **3D rendering support** - Hardware-accelerated 3D on supported GPUs
+- **Access control** - Proper locking for DisplayConnector mmap
+- **Multi-monitor** - Better multi-display support
+- **Hardware composition** - Display controller overlay planes
+- **Modern APIs** - Vulkan/OpenGL acceleration
+
+Reference: `Documentation/Kernel/GraphicsSubsystem.md:13`

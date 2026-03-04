@@ -1,0 +1,352 @@
+---
+title: Network Stack
+description: SerenityOS kernel networking implementation and protocols
+---
+
+The SerenityOS kernel implements a complete TCP/IP network stack supporting IPv4, IPv6, and various network protocols.
+
+## Architecture Overview
+
+The network stack is built around several core components:
+
+### Network Task
+
+The `NetworkTask` (`Kernel/Net/NetworkTask.cpp`) is a dedicated kernel process that:
+
+- Processes incoming packets from all network adapters
+- Dispatches packets to protocol handlers
+- Manages delayed TCP ACKs
+- Handles TCP retransmission
+- Runs the main packet processing loop
+
+Reference: `Kernel/Net/NetworkTask.h`
+
+**Packet processing flow:**
+1. Network adapter receives packet → triggers interrupt
+2. `on_receive` callback increments pending packets counter
+3. NetworkTask wakes up and reads packet from adapter
+4. Ethernet frame header parsed to determine EtherType
+5. Dispatch to appropriate handler (ARP, IPv4, IPv6)
+
+Reference: `Kernel/Net/NetworkTask.cpp:95`
+
+### Socket Abstraction
+
+The `Socket` class (`Kernel/Net/Socket.h`) provides the base for all network sockets:
+
+<Accordion title="Socket Base Class">
+**Core properties:**
+- Domain (AF_INET, AF_INET6, AF_LOCAL)
+- Type (SOCK_STREAM, SOCK_DGRAM, SOCK_RAW)
+- Protocol (IPPROTO_TCP, IPPROTO_UDP, etc.)
+
+**Socket states:**
+```cpp
+enum class SetupState {
+    Unstarted,  // Not yet configured
+    InProgress, // Connection in progress (TCP SYN sent)
+    Completed,  // Setup complete
+};
+
+enum class Role {
+    None,
+    Listener,   // Listening socket
+    Accepted,   // Accepted from listener
+    Connected,  // Active connection
+    Connecting  // Connection in progress
+};
+```
+
+Reference: `Kernel/Net/Socket.h:33`
+</Accordion>
+
+**Key operations:**
+- `bind()` - Bind to local address
+- `connect()` - Establish connection
+- `listen()` / `accept()` - Server operations
+- `sendto()` / `recvfrom()` - Data transfer
+- `setsockopt()` / `getsockopt()` - Socket options
+- `shutdown()` - Close one or both directions
+
+Reference: `Kernel/Net/Socket.h:74`
+
+## Protocol Implementations
+
+### TCP (Transmission Control Protocol)
+
+`TCPSocket` (`Kernel/Net/TCPSocket.h`) implements reliable, connection-oriented communication:
+
+<Accordion title="TCP State Machine">
+```cpp
+enum class State {
+    Closed,
+    Listen,
+    SynSent,
+    SynReceived,
+    Established,
+    CloseWait,
+    LastAck,
+    FinWait1,
+    FinWait2,
+    Closing,
+    TimeWait,
+};
+```
+
+The implementation follows RFC 793 TCP state transitions.
+
+Reference: `Kernel/Net/TCPSocket.h:54`
+</Accordion>
+
+**Features:**
+- Three-way handshake (SYN, SYN-ACK, ACK)
+- Sequence number tracking
+- Window-based flow control
+- Delayed ACK optimization
+- Retransmission on timeout
+- Congestion control
+- Graceful connection termination (FIN)
+
+**TCP packet handling:**
+```cpp
+static void handle_tcp(IPv4Packet const&, 
+                       UnixDateTime const& packet_timestamp, 
+                       RefPtr<NetworkAdapter> adapter);
+```
+
+Reference: `Kernel/Net/NetworkTask.cpp:39`, `Kernel/Net/TCP.h`
+
+### UDP (User Datagram Protocol)
+
+`UDPSocket` (`Kernel/Net/UDPSocket.h`) provides connectionless, unreliable datagram service:
+
+- No connection establishment required
+- Best-effort delivery
+- Checksum validation
+- Multicast support
+- Broadcast support (when enabled)
+
+Reference: `Kernel/Net/UDPSocket.h`, `Kernel/Net/UDP.h`
+
+### IPv4 (Internet Protocol version 4)
+
+IPv4 packet handling includes:
+- Header validation and checksum verification
+- Fragmentation and reassembly
+- Time-to-live (TTL) processing
+- Routing decision making
+- Protocol demultiplexing (TCP, UDP, ICMP)
+
+**IPv4 packet structure:**
+```cpp
+struct IPv4Packet {
+    // Header fields
+    // Payload access
+    // Protocol identification
+};
+```
+
+Reference: `Kernel/Net/IP/IPv4.h`
+
+### IPv6 (Internet Protocol version 6)
+
+IPv6 support includes:
+- 128-bit addressing
+- Simplified header format
+- Extension headers
+- ICMPv6 integration
+- Neighbor Discovery Protocol (NDP)
+
+Reference: `Kernel/Net/IP/IPv6.h`, `Kernel/Net/ICMPv6.h`
+
+### ICMP (Internet Control Message Protocol)
+
+**ICMPv4:**
+- Echo request/reply (ping)
+- Destination unreachable
+- Time exceeded
+- Redirect messages
+
+Reference: `Kernel/Net/ICMP.h`
+
+**ICMPv6:**
+- Echo request/reply
+- Neighbor Solicitation/Advertisement
+- Router Solicitation/Advertisement
+- Packet Too Big messages
+
+Reference: `Kernel/Net/ICMPv6.h`
+
+### Local Sockets (Unix Domain)
+
+`LocalSocket` (`Kernel/Net/LocalSocket.h`) implements AF_LOCAL/AF_UNIX sockets:
+
+- Stream sockets (SOCK_STREAM)
+- Datagram sockets (SOCK_DGRAM)
+- File system path binding
+- SCM_RIGHTS (file descriptor passing)
+- Credential passing
+
+Reference: `Kernel/Net/LocalSocket.h`
+
+## Network Adapters
+
+The `NetworkAdapter` (`Kernel/Net/NetworkAdapter.h`) class abstracts network interfaces:
+
+### Supported Drivers
+
+**Loopback Adapter**
+- Virtual adapter for local communication
+- Automatically configured with 127.0.0.1/8
+- No hardware dependencies
+
+Reference: `Kernel/Net/LoopbackAdapter.h`, `Kernel/Net/NetworkTask.cpp:70`
+
+**Intel Network Cards** (`Kernel/Net/Intel/`)
+- E1000 family support
+- PCI-based adapters
+- Hardware offload capabilities
+
+**Realtek Network Cards** (`Kernel/Net/Realtek/`)
+- RTL8139 and compatible
+- Common in virtual environments
+
+**VirtIO Network** (`Kernel/Net/VirtIO/`)
+- Virtio-net para-virtualized driver
+- Optimized for virtual machines
+- High performance with minimal overhead
+
+### Adapter Configuration
+
+**NetworkAdapter** provides:
+- MAC address management
+- IPv4 address/netmask configuration
+- IPv6 address configuration
+- MTU (Maximum Transmission Unit) settings
+- Packet receive callback registration
+- Link state monitoring
+
+Reference: `Kernel/Net/NetworkAdapter.h`
+
+## Routing and ARP
+
+### Routing Table
+
+`Route` structure (`Kernel/Net/Routing.h`) defines routing entries:
+
+```cpp
+struct Route {
+    IPv4Address destination;
+    IPv4Address gateway;
+    IPv4Address netmask;
+    u16 flags;
+    NonnullRefPtr<NetworkAdapter> adapter;
+};
+```
+
+**Routing operations:**
+- `route_to()` - Find route for destination
+- `update_routing_table()` - Add/remove routes
+- Gateway routing support
+- Broadcast routing
+
+Reference: `Kernel/Net/Routing.h:18`, `Kernel/Net/Routing.cpp`
+
+### ARP (Address Resolution Protocol)
+
+ARP maps IPv4 addresses to MAC addresses:
+
+- ARP request/reply handling
+- ARP cache (table) management
+- Automatic cache updates
+- ARP cache aging and expiration
+
+**ARP functions:**
+```cpp
+void update_arp_table(IPv4Address const&, MACAddress const&, UpdateTable);
+HashMap<IPv4Address, MACAddress>& arp_table();
+```
+
+Reference: `Kernel/Net/IP/ARP.h`, `Kernel/Net/Routing.h:60`
+
+## Network Management
+
+`NetworkingManagement` (`Kernel/Net/NetworkingManagement.h`) provides system-wide coordination:
+
+- Network adapter registration and enumeration
+- Adapter lifecycle management
+- Global network subsystem initialization
+- Adapter iteration for packet processing
+
+Reference: `Kernel/Net/NetworkingManagement.h`, `Kernel/Net/NetworkTask.cpp:67`
+
+## Socket Options
+
+Supported socket options via `setsockopt()` / `getsockopt()`:
+
+### SOL_SOCKET Level
+- `SO_RCVTIMEO` / `SO_SNDTIMEO` - Receive/send timeouts
+- `SO_ERROR` - Get and clear error status
+- `SO_REUSEADDR` - Allow address reuse
+- `SO_KEEPALIVE` - TCP keepalive
+- `SO_TIMESTAMP` - Packet timestamps
+- `SO_BINDTODEVICE` - Bind to specific interface
+
+### IPPROTO_IP Level
+- `IP_TTL` - Time-to-live
+- `IP_MULTICAST_LOOP` - Multicast loopback
+- `IP_ADD_MEMBERSHIP` / `IP_DROP_MEMBERSHIP` - Multicast groups
+
+### IPPROTO_TCP Level
+- `TCP_NODELAY` - Disable Nagle algorithm
+
+Reference: `Kernel/Net/Socket.h:84`
+
+## Packet Buffer Management
+
+The NetworkTask allocates a 64 KiB kernel buffer for packet processing:
+
+```cpp
+size_t buffer_size = 64 * KiB;
+auto region = MM.allocate_kernel_region(buffer_size, 
+                                        "Kernel Packet Buffer",
+                                        Memory::Region::Access::ReadWrite);
+```
+
+Packets are copied from adapter receive buffers into this shared kernel buffer for processing.
+
+Reference: `Kernel/Net/NetworkTask.cpp:81`
+
+## Performance Optimizations
+
+### Delayed TCP ACK
+
+The stack implements delayed ACK to reduce overhead:
+- ACKs batched when possible
+- Separate hash table tracks sockets needing ACKs
+- Periodic flush (every 500ms) ensures timely acknowledgment
+
+Reference: `Kernel/Net/NetworkTask.cpp:46`, `Kernel/Net/NetworkTask.cpp:96`
+
+### TCP Retransmission
+
+Automatic retransmission of lost packets:
+- Timer-based retransmit queue
+- Exponential backoff
+- Configurable retransmit limits
+
+Reference: `Kernel/Net/NetworkTask.cpp:43`
+
+## Implementation Notes
+
+<Info>
+All network operations use the `SOCKET_TRY()` macro which automatically updates the `SO_ERROR` field on failure, providing proper error reporting to userspace.
+</Info>
+
+The network stack runs entirely in kernel space, with the NetworkTask handling all packet processing. This design ensures:
+- Low latency for packet handling
+- Efficient interrupt-driven processing
+- Centralized protocol implementation
+- Simplified synchronization
+
+Reference: `Kernel/Net/Socket.h:187`

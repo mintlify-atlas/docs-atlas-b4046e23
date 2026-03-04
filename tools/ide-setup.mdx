@@ -1,0 +1,57 @@
+---
+title: IDE Setup Overview
+description: Configure your development environment for SerenityOS
+---
+
+SerenityOS supports a wide range of development environments, from full-featured IDEs to terminal-based editors. Choose the setup that best fits your workflow.
+
+## Supported IDEs and Editors
+
+SerenityOS has detailed configuration guides for the following development environments:
+
+<CardGroup cols={2}>
+  <Card title="VS Code" icon="code" href="/tools/vscode">
+    Popular cross-platform editor with excellent clangd support
+  </Card>
+  <Card title="CLion" icon="c" href="/tools/clion">
+    JetBrains IDE with native CMake integration
+  </Card>
+  <Card title="Vim/Neovim" icon="terminal" href="/tools/vim-emacs">
+    Terminal-based editors with powerful plugins
+  </Card>
+  <Card title="Emacs" icon="terminal" href="/tools/vim-emacs">
+    Extensible editor with lsp-mode support
+  </Card>
+</CardGroup>
+
+## Common Requirements
+
+Regardless of your editor choice, you'll need:
+
+- **clangd**: For code comprehension and navigation. See [ClangdConfiguration](ClangdConfiguration.md) for setup details.
+- **clang-format**: For automatic code formatting according to SerenityOS style guidelines.
+- **Build directory**: Run `./Meta/serenity.sh build` at least once to generate necessary build artifacts.
+- **Toolchain**: Build the toolchain with `./Toolchain/BuildGNU.sh` before configuring your IDE.
+
+## Code Comprehension
+
+All recommended setups use **clangd** for code comprehension, which provides:
+
+- Fast, accurate autocomplete
+- Jump-to-definition and find-references
+- Inline diagnostics and error checking
+- Cross-compilation support for SerenityOS targets
+
+Clangd works well with SerenityOS's cross-compilation workflow and understands the custom toolchain and sysroot.
+
+## Formatting
+
+SerenityOS uses **clang-format** to maintain consistent code style. The repository includes a `.clang-format` configuration file that all editors should respect.
+
+## Next Steps
+
+Choose your preferred development environment:
+
+- [VS Code Configuration](/tools/vscode) - Recommended for most users
+- [CLion Configuration](/tools/clion) - Best CMake integration
+- [Vim/Emacs Configuration](/tools/vim-emacs) - Terminal-based workflows

@@ -1,0 +1,363 @@
+---
+title: Process & Thread Scheduling
+description: Process management, thread scheduling, and context switching in the SerenityOS kernel
+---
+
+The SerenityOS kernel implements a priority-based preemptive multitasking scheduler that manages processes and threads. The scheduling subsystem is located in `Kernel/Tasks/` and provides fair CPU time distribution across multiple threads.
+
+## Core Concepts
+
+### Process
+
+A `Process` (`Kernel/Tasks/Process.h`) represents a program in execution with its own:
+
+- Address space (`AddressSpace`)
+- Open file descriptors
+- Credentials (UID, GID, groups)
+- Security context (pledge promises, unveil paths)
+- One or more threads
+- Process group and session membership
+
+Processes are identified by a unique `ProcessID` (pid) and have a parent process (ppid).
+
+#### Key Process State
+
+```cpp
+class Process : public ListedRefCounted<Process, LockType::Spinlock> {
+    ProcessID pid;
+    ProcessID ppid;
+    RefPtr<Credentials> credentials;
+    RefPtr<ProcessGroup> process_group;
+    RefPtr<TTY> tty;
+    u32 promises;           // pledge promises
+    u32 execpromises;       // exec pledge promises
+    mode_t umask;
+    VirtualAddress signal_trampoline;
+    u32 thread_count;
+};
+```
+
+### Thread
+
+A `Thread` (`Kernel/Tasks/Thread.h`) is the schedulable unit of execution. Each thread has:
+
+- Unique thread ID (`ThreadID`)
+- Reference to parent process
+- Priority level (1-31)
+- CPU affinity mask
+- Register state
+- Kernel and user stacks
+- Thread-local storage (TLS)
+
+#### Thread States
+
+```cpp
+enum class State : u8 {
+    Invalid = 0,
+    Runnable,     // Ready to run
+    Running,      // Currently executing
+    Dying,        // Exiting
+    Dead,         // Fully terminated
+    Stopped,      // Stopped by signal (SIGSTOP)
+    Blocked,      // Waiting for resource
+};
+```
+
+<Info>
+Only threads in the `Runnable` state are eligible for scheduling.
+</Info>
+
+## The Scheduler
+
+The `Scheduler` (`Kernel/Tasks/Scheduler.h`) is responsible for:
+
+- Selecting the next thread to run
+- Context switching between threads
+- Managing runnable thread queues
+- Timer-based preemption
+- Idle loop execution
+
+### Scheduling Algorithm
+
+SerenityOS uses a **priority-based round-robin scheduler** with multiple priority queues:
+
+```cpp
+static constexpr size_t priority_queue_count = 32;
+Array<ThreadReadyQueue, priority_queue_count> queues;
+```
+
+Thread priorities range from `THREAD_PRIORITY_MIN` (1) to `THREAD_PRIORITY_MAX` (31):
+- Higher values = higher priority
+- Default priority: 30 (normal)
+- Idle threads: priority 1
+
+<Accordion title="Priority Queue Implementation">
+The scheduler maintains a bitmask of non-empty queues for efficient queue selection:
+
+```cpp
+struct ThreadReadyQueues {
+    u32 mask {};  // Bitmask of non-empty queues
+    Array<ThreadReadyQueue, count> queues;
+};
+```
+
+When selecting the next thread, the scheduler uses `bit_scan_forward()` to find the highest-priority non-empty queue in O(1) time.
+</Accordion>
+
+### Time Slicing
+
+Threads are given time slices based on their type:
+
+```cpp
+static u32 time_slice_for(Thread const& thread)
+{
+    // One time slice unit == 4ms (assuming 250 ticks/second)
+    if (thread.is_idle_thread())
+        return 1;  // 4ms
+    return 2;      // 8ms
+}
+```
+
+When a thread's time slice expires, the scheduler preempts it via timer interrupt.
+
+### Scheduling Operations
+
+#### pick_next()
+
+Selects the next thread to run:
+
+1. Checks for runnable threads in priority order
+2. Respects CPU affinity masks
+3. Skips threads already running on other cores
+4. Returns `NoRunnableThreadFound` if all threads blocked
+
+#### yield()
+
+Allows a thread to voluntarily give up the CPU:
+
+```cpp
+static ScheduleResult yield();
+```
+
+The current thread is moved to the end of its priority queue and another thread is scheduled.
+
+#### context_switch()
+
+Performs the actual CPU context switch to a new thread:
+
+1. Saves current thread's register state
+2. Switches page directory (address space)
+3. Loads new thread's register state
+4. Updates TLS and stack pointers
+5. Restores execution
+
+<Warning>
+The scheduler lock (`g_scheduler_lock`) must be held during context switches to prevent race conditions.
+</Warning>
+
+## Thread Management
+
+### Creating Threads
+
+Threads are created via `Thread::create()`:
+
+```cpp
+auto thread = TRY(Thread::create(process));
+thread->set_priority(priority);
+thread->set_name(name);
+```
+
+User space creates threads via the `create_thread` syscall with parameters:
+
+```cpp
+struct SC_create_thread_params {
+    unsigned int detach_state;      // JOINABLE or DETACHED
+    int schedule_priority;          // Thread priority
+    unsigned int guard_page_size;   // Stack guard size
+    unsigned int stack_size;        // Stack size
+    void* stack_location;           // Stack location (or nullptr)
+    void* (*entry)(void*);          // Entry point
+    void* entry_argument;           // Argument to entry
+    void* tls_pointer;              // TLS pointer
+};
+```
+
+### Thread Blocking
+
+Threads block when waiting for resources using the `BlockResult` mechanism:
+
+```cpp
+enum class BlockResult::Type {
+    WokeNormally,           // Unblocked normally
+    NotBlocked,             // Wasn't actually blocked
+    InterruptedBySignal,    // Signal received
+    InterruptedByDeath,     // Process dying
+    InterruptedByTimeout,   // Timeout expired
+};
+```
+
+Common blocking scenarios:
+- **WaitQueue**: Waiting for events (e.g., child process exit)
+- **Mutex**: Waiting to acquire a lock
+- **I/O**: Waiting for data from files/sockets
+- **Futex**: User space synchronization primitives
+
+### Thread Finalization
+
+When threads exit, they transition through `Dying` to `Dead` state. The finalizer thread (`g_finalizer`) performs cleanup:
+
+```cpp
+Thread* g_finalizer;
+WaitQueue* g_finalizer_wait_queue;
+```
+
+The finalizer:
+1. Frees thread kernel stacks
+2. Releases thread resources
+3. Notifies joining threads
+4. Removes thread from process
+
+## Process Management
+
+### Process Creation
+
+Processes are created via:
+
+- **fork()**: Duplicate current process (copy-on-write)
+- **exec()**: Replace process with new program
+- **posix_spawn()**: Combined fork+exec optimization
+
+### Process Groups and Sessions
+
+Processes are organized into:
+
+**Process Groups** (`ProcessGroup`)
+- Collection of related processes
+- Share a process group ID (pgid)
+- Used for signal delivery to multiple processes
+
+**Sessions**
+- Collection of process groups
+- Associated with controlling terminal
+- Managed via `setsid()`, `getsid()`
+
+### Process Security
+
+#### Pledge
+
+Restricts process capabilities via promises:
+
+```cpp
+enum class Pledge : u32 {
+    stdio, rpath, wpath, cpath, dpath,
+    inet, id, proc, ptrace, exec,
+    unix, recvfd, sendfd, fattr, tty,
+    chown, thread, video, accept,
+    settime, sigaction, setkeymap,
+    prot_exec, map_fixed, getkeymap,
+    mount, unshare, no_error
+};
+```
+
+Once pledged, violations cause process termination.
+
+#### Unveil
+
+Restricts filesystem access to specific paths:
+
+```cpp
+enum class VeilState {
+    None,              // No unveil restrictions
+    Dropped,           // Unveil active, can add paths
+    Locked,            // No more paths can be added
+    LockedInherited,   // Inherited locked state
+};
+```
+
+<Info>
+Pledge and unveil provide defense-in-depth security by limiting process capabilities after initialization.
+</Info>
+
+## CPU Affinity
+
+Threads can be bound to specific CPUs via affinity masks:
+
+```cpp
+#define THREAD_AFFINITY_DEFAULT 0xffffffff  // All CPUs
+
+u32 affinity = 1u << cpu_id;  // Bind to specific CPU
+thread->set_affinity(affinity);
+```
+
+The scheduler respects affinity when selecting threads:
+
+```cpp
+auto affinity_mask = 1u << Processor::current_id();
+if (!(thread.affinity() & affinity_mask))
+    continue;  // Skip thread not allowed on this CPU
+```
+
+## Performance Tracking
+
+The scheduler tracks CPU time usage:
+
+```cpp
+struct TotalTimeScheduled {
+    u64 total { 0 };        // Total time scheduled
+    u64 total_kernel { 0 }; // Time in kernel mode
+};
+```
+
+Per-thread statistics include:
+- Time in user mode
+- Time in kernel mode
+- Context switches
+- Page faults
+
+## Work Queues
+
+`WorkQueue` (`Kernel/Tasks/WorkQueue.h`) provides deferred work execution:
+
+```cpp
+WorkQueue::global().queue_work([&] {
+    // Execute work asynchronously
+});
+```
+
+Work queues run at lower priority and don't block critical paths.
+
+## Key Operations
+
+### Scheduling a Thread
+
+```cpp
+// Make thread runnable
+Scheduler::enqueue_runnable_thread(*thread);
+
+// Yield to scheduler
+Scheduler::yield();
+```
+
+### Setting Thread Priority
+
+```cpp
+thread->set_priority(THREAD_PRIORITY_HIGH);
+```
+
+### Blocking and Unblocking
+
+```cpp
+// Block on wait queue
+auto result = wait_queue.wait_on(timeout);
+if (result.was_interrupted())
+    return EINTR;
+```
+
+## Related Files
+
+- `Kernel/Tasks/Scheduler.{h,cpp}` - Core scheduler implementation
+- `Kernel/Tasks/Thread.{h,cpp}` - Thread abstraction
+- `Kernel/Tasks/Process.{h,cpp}` - Process management
+- `Kernel/Tasks/ProcessGroup.{h,cpp}` - Process group management
+- `Kernel/Tasks/WaitQueue.{h,cpp}` - Thread blocking mechanism
+- `Kernel/Tasks/WorkQueue.{h,cpp}` - Deferred work execution

@@ -1,0 +1,478 @@
+---
+title: Userland Architecture
+description: SerenityOS userspace components, services, and applications
+---
+
+The SerenityOS userland comprises all user-space components including system services, applications, utilities, and libraries. Everything is built from scratch with a cohesive design philosophy.
+
+## Userland Overview
+
+The userland is organized into distinct categories in the `Userland/` directory:
+
+```bash
+Userland/
+├── Libraries/       # ~80 system libraries (LibGUI, LibWeb, LibGfx, etc.)
+├── Services/        # System services (WindowServer, AudioServer, etc.)
+├── Applications/    # GUI applications (~50 apps)
+├── Utilities/       # Command-line utilities (~200 tools)
+├── Games/           # Built-in games
+├── Demos/           # Demonstration programs
+├── Applets/         # Taskbar applets
+├── DevTools/        # Development tools (HackStudio, Profiler)
+├── Shell/           # The SerenityOS shell
+└── DynamicLoader/   # Runtime dynamic linker
+```
+
+## System Services
+
+System services are long-running daemon processes that provide core functionality:
+
+<CardGroup cols={2}>
+  <Card title="WindowServer" icon="window-maximize">
+    **Primary Responsibilities:**
+    - Window management and compositing
+    - Input event distribution
+    - Desktop rendering
+    - Multi-monitor support
+    - Theme management
+    
+    The WindowServer is the compositor that manages all GUI windows, handles mouse/keyboard input, and renders the desktop environment.
+  </Card>
+  
+  <Card title="AudioServer" icon="volume-up">
+    **Primary Responsibilities:**
+    - Audio mixing and playback
+    - Sound device management
+    - Per-application volume control
+    - Audio format conversion
+    
+    Manages all audio output, mixing multiple streams from different applications.
+  </Card>
+  
+  <Card title="LoginServer" icon="user-lock">
+    **Primary Responsibilities:**
+    - User authentication
+    - Session management
+    - Login screen
+    - User switching
+    
+    Handles user login, authentication, and session initialization.
+  </Card>
+  
+  <Card title="SystemServer" icon="server">
+    **Primary Responsibilities:**
+    - Service lifecycle management
+    - Boot process coordination
+    - Service dependencies
+    - System initialization
+    
+    The init system that starts and manages all other system services.
+  </Card>
+</CardGroup>
+
+### Complete Service List
+
+<AccordionGroup>
+  <Accordion title="Core Services">
+    - **SystemServer**: Init system and service manager
+    - **LoginServer**: User authentication and sessions
+    - **WindowServer**: GUI compositor and window manager
+    - **Taskbar**: Desktop taskbar and system tray
+  </Accordion>
+  
+  <Accordion title="Media Services">
+    - **AudioServer**: Audio mixing and playback
+    - **ImageDecoder**: Image decoding service (IPC-based)
+  </Accordion>
+  
+  <Accordion title="Network Services">
+    - **RequestServer**: HTTP/HTTPS request handling
+    - **WebContent**: Isolated web rendering process
+    - **WebWorker**: Web Worker execution
+    - **WebDriver**: Browser automation protocol
+    - **WebServer**: HTTP server daemon
+    - **LookupServer**: DNS resolver
+    - **DHCPClient**: DHCP client
+    - **NetworkServer**: Network configuration
+    - **TelnetServer**: Telnet server
+  </Accordion>
+  
+  <Accordion title="Desktop Services">
+    - **NotificationServer**: Desktop notifications
+    - **Clipboard**: System clipboard manager
+    - **FileSystemAccessServer**: Filesystem access mediation
+    - **FileOperation**: File copy/move operations
+    - **ConfigServer**: Configuration management
+  </Accordion>
+  
+  <Accordion title="System Services">
+    - **CrashDaemon**: Crash report collection
+    - **LaunchServer**: Application launcher and file associations
+    - **DeviceMapper**: Device management
+    - **KeyboardPreferenceLoader**: Keyboard layout loader
+    - **SpiceAgent**: QEMU SPICE integration
+  </Accordion>
+  
+  <Accordion title="Other Services">
+    - **SQLServer**: SQL database server
+    - **ChessEngine**: Chess AI engine
+    - **EchoServer**: Echo protocol server (testing)
+  </Accordion>
+</AccordionGroup>
+
+## Applications
+
+SerenityOS includes a rich set of GUI and CLI applications:
+
+### GUI Applications
+
+<Tabs>
+  <Tab title="Productivity">
+    - **TextEditor**: Multi-format text editor with syntax highlighting
+    - **Spreadsheet**: Spreadsheet with JavaScript integration
+    - **Calendar**: Calendar and scheduling
+    - **Mail**: Email client
+    - **FileManager**: Graphical file browser
+    - **PixelPaint**: Raster graphics editor
+  </Tab>
+  
+  <Tab title="Internet">
+    - **Browser**: Full web browser with LibWeb engine
+      - JavaScript (ES2021+ support)
+      - WebAssembly
+      - CSS3
+      - DOM APIs
+    - **BrowserSettings**: Browser configuration
+  </Tab>
+  
+  <Tab title="Development">
+    - **HackStudio**: Integrated development environment
+      - C++ code editing
+      - Project management
+      - Debugger integration
+      - Git integration
+    - **Debugger**: Standalone debugger
+    - **Profiler**: Performance profiler
+    - **HexEditor**: Binary file editor
+    - **GMLPlayground**: GUI Markup Language tester
+  </Tab>
+  
+  <Tab title="System">
+    - **Terminal**: Terminal emulator
+    - **SystemMonitor**: Process and resource monitor
+    - **DisplaySettings**: Display configuration
+    - **ThemeEditor**: Theme customization
+    - **Assistant**: Application launcher (like Spotlight)
+    - **About**: System information
+  </Tab>
+  
+  <Tab title="Utilities">
+    - **Calculator**: Desktop calculator
+    - **Clock**: World clock
+    - **CharacterMap**: Unicode character browser
+    - **FontEditor**: Bitmap and vector font editor
+    - **3DFileViewer**: 3D model viewer
+    - **ImageViewer**: Image viewer
+    - **VideoPlayer**: Video player
+    - **SoundPlayer**: Audio player
+  </Tab>
+</Tabs>
+
+### Command-Line Utilities
+
+SerenityOS provides ~200 Unix-like command-line utilities in `Userland/Utilities/`:
+
+<CodeGroup>
+```bash File Operations
+ls, cp, mv, rm, mkdir, rmdir, cat, touch
+find, grep, diff, patch, tar, gzip, zip
+chmod, chown, ln, readlink, stat
+```
+
+```bash Text Processing
+awk, sed, sort, uniq, wc, head, tail
+cut, paste, tr, fold, expand, unexpand
+```
+
+```bash System
+ps, top, kill, killall, pidof, uptime
+uname, hostname, dmesg, env, which
+id, whoami, groups, su, passwd
+```
+
+```bash Network
+ping, ifconfig, route, netstat, nc
+ftp, telnet, host, nslookup
+```
+</CodeGroup>
+
+## Games and Demos
+
+<CardGroup cols={3}>
+  <Card title="Games" icon="gamepad">
+    - Solitaire
+    - Minesweeper
+    - Chess
+    - 2048
+    - Snake
+    - Pong
+    - Breakout
+    - Conway's Game of Life
+  </Card>
+  
+  <Card title="Demos" icon="star">
+    - CatDog (desktop pet)
+    - Eyes (follows cursor)
+    - Starfield
+    - Fire
+    - Mandelbrot
+    - WidgetGallery
+  </Card>
+  
+  <Card title="Applets" icon="puzzle-piece">
+    - Audio applet
+    - Clock applet
+    - Network applet
+    - Keyboard applet
+    - ResourceGraph
+  </Card>
+</CardGroup>
+
+## Development Tools
+
+### HackStudio IDE
+
+**HackStudio** is the native IDE for SerenityOS development:
+
+<AccordionGroup>
+  <Accordion title="Features">
+    - C++ syntax highlighting and code completion
+    - Project management with multiple build configurations
+    - Integrated debugger with breakpoints and variable inspection
+    - Git integration (status, diff, commit)
+    - Terminal integration
+    - TODO list tracking
+    - Class browser
+  </Accordion>
+  
+  <Accordion title="Language Support">
+    - **C++**: Full support with LibCpp parsing
+    - **JavaScript**: Syntax highlighting
+    - **HTML/CSS**: Web development support
+    - **GML**: GUI Markup Language
+    - **Markdown**: Documentation editing
+  </Accordion>
+</AccordionGroup>
+
+### Profiler
+
+The **Profiler** application provides performance analysis:
+
+- Kernel-level profiling support
+- Per-function timing breakdown
+- Call graph visualization
+- Flame graph generation
+- Symbol resolution
+- Sampling profiler with low overhead
+
+### Debugger
+
+Standalone **Debugger** with:
+
+- Process attachment and control
+- Breakpoint management
+- Single-stepping execution
+- Memory inspection
+- Register viewing
+- Disassembly view
+
+## Shell
+
+The SerenityOS **Shell** (`Userland/Shell/`) is a custom shell implementation:
+
+<Tabs>
+  <Tab title="Features">
+    - POSIX-like shell syntax
+    - Job control (background jobs, fg/bg)
+    - Pipes and redirections
+    - Command history
+    - Tab completion
+    - Shell scripting
+    - Globbing (wildcards)
+  </Tab>
+  
+  <Tab title="Built-in Commands">
+    - `cd`, `pwd`, `exit`
+    - `history`, `export`, `unset`
+    - `alias`, `jobs`, `fg`, `bg`
+    - `source`, `time`
+  </Tab>
+  
+  <Tab title="Advanced Features">
+    - Function definitions
+    - Control flow (if/else, for, while)
+    - Variables and substitution
+    - Arithmetic expansion
+    - Process substitution
+  </Tab>
+</Tabs>
+
+## Dynamic Loader
+
+The **DynamicLoader** (`Userland/DynamicLoader/`) is the runtime linker:
+
+- **ELF Loading**: Loads dynamically-linked executables
+- **Symbol Resolution**: Resolves symbols across shared libraries
+- **Relocation**: Applies relocations for position-independent code
+- **Lazy Binding**: Defers symbol resolution until first use
+- **RPATH Support**: Library search path configuration
+
+## Application Lifecycle
+
+Typical application execution flow:
+
+```
+┌─────────────────────────────────────────────┐
+│  1. User launches application               │
+│     (via GUI or command line)               │
+└────────────────┬────────────────────────────┘
+                 |
+                 v
+┌─────────────────────────────────────────────┐
+│  2. LaunchServer handles file associations  │
+│     or direct execution                     │
+└────────────────┬────────────────────────────┘
+                 |
+                 v
+┌─────────────────────────────────────────────┐
+│  3. Kernel: fork() + execve()               │
+│     - Creates new process                   │
+│     - Loads executable                      │
+└────────────────┬────────────────────────────┘
+                 |
+                 v
+┌─────────────────────────────────────────────┐
+│  4. DynamicLoader (if dynamic)              │
+│     - Loads shared libraries                │
+│     - Resolves symbols                      │
+└────────────────┬────────────────────────────┘
+                 |
+                 v
+┌─────────────────────────────────────────────┐
+│  5. Application initialization              │
+│     - serenity_main() entry point           │
+│     - Connect to system services via IPC    │
+│     - Create GUI windows (if GUI app)       │
+└────────────────┬────────────────────────────┘
+                 |
+                 v
+┌─────────────────────────────────────────────┐
+│  6. Event loop execution                    │
+│     - Process events from WindowServer      │
+│     - Handle user input                     │
+│     - Perform application logic             │
+└─────────────────────────────────────────────┘
+```
+
+## Security in Userland
+
+<Info>
+Userland applications benefit from kernel security features:
+</Info>
+
+<AccordionGroup>
+  <Accordion title="pledge() Usage">
+    Applications use `pledge()` to limit their capabilities:
+    
+    ```cpp
+    // Browser restricts its main process
+    TRY(Core::System::pledge("stdio recvfd sendfd unix rpath"));
+    ```
+    
+    Common pledge promises:
+    - `stdio`: Basic I/O
+    - `rpath`, `wpath`, `cpath`: File read/write/create
+    - `inet`: Network access
+    - `unix`: Unix domain sockets
+    - `proc`: Process control
+    - `exec`: Execute other programs
+  </Accordion>
+  
+  <Accordion title="unveil() Usage">
+    Applications use `unveil()` to restrict filesystem access:
+    
+    ```cpp
+    // Only allow reading from specific directories
+    TRY(Core::System::unveil("/res", "r"));
+    TRY(Core::System::unveil("/usr/lib", "r"));
+    TRY(Core::System::unveil(nullptr, nullptr));  // Lock
+    ```
+  </Accordion>
+  
+  <Accordion title="Process Isolation">
+    - **WebContent Isolation**: Browser renders web pages in separate processes
+    - **ImageDecoder Isolation**: Image decoding happens in isolated service
+    - **Capability-Based Security**: Services only granted necessary permissions
+  </Accordion>
+</AccordionGroup>
+
+## Modern C++ Patterns
+
+Userland code extensively uses modern C++ patterns:
+
+<CodeGroup>
+```cpp serenity_main() Entry Point
+#include <LibMain/Main.h>
+
+ErrorOr<int> serenity_main(Main::Arguments arguments)
+{
+    // No traditional int main(argc, argv)
+    // Better error handling with ErrorOr<>
+    TRY(Core::System::pledge("stdio rpath"));
+    
+    auto app = TRY(GUI::Application::create(arguments));
+    // ...
+    return app->exec();
+}
+```
+
+```cpp Error Handling with TRY()
+// Seamless error propagation
+ErrorOr<void> load_file(StringView path)
+{
+    auto file = TRY(Core::File::open(path, Core::File::OpenMode::Read));
+    auto contents = TRY(file->read_until_eof());
+    TRY(process_contents(contents));
+    return {};
+}
+```
+
+```cpp Smart Pointers
+// Reference-counted GUI objects
+RefPtr<GUI::Window> window = GUI::Window::construct();
+window->set_title("My Application");
+
+// Non-null variants for guaranteed validity
+NonnullRefPtr<GUI::Button> button = GUI::Button::construct();
+```
+</CodeGroup>
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="Library Architecture" icon="book" href="./libraries">
+    Explore the userland library ecosystem
+  </Card>
+  
+  <Card title="IPC Architecture" icon="exchange" href="./ipc">
+    Learn how services communicate
+  </Card>
+  
+  <Card title="Event Loop System" icon="rotate" href="/source/Documentation/EventLoop.md">
+    Understand the event-driven architecture
+  </Card>
+  
+  <Card title="Coding Patterns" icon="code" href="/source/Documentation/Patterns.md">
+    Common coding patterns in SerenityOS
+  </Card>
+</CardGroup>

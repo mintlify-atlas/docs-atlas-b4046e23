@@ -1,0 +1,194 @@
+---
+title: CLion Configuration
+description: Set up JetBrains CLion for SerenityOS development
+---
+
+CLion integrates directly with CMake to provide excellent code comprehension features for SerenityOS development.
+
+## Prerequisites
+
+<Steps>
+  <Step title="Build the Toolchain">
+    If you have not built the Toolchain, run:
+    ```bash
+    ./Toolchain/BuildGNU.sh
+    ```
+  </Step>
+  
+  <Step title="Build Host Tools from Lagom">
+    Run one of the following:
+    ```bash
+    ./Meta/serenity.sh build
+    ```
+    
+    Or manually:
+    ```bash
+    cmake -GNinja -S Meta/CMake/Superbuild -B Build/superbuild-x86_64
+    ninja -C Build/superbuild-x86_64
+    ```
+  </Step>
+</Steps>
+
+## Project Configuration
+
+After opening the `serenity` repository in CLion as a new project, the "Open Project Wizard" window will open.
+
+<Note>
+  CMake will complain with any build type other than `Default`. Make sure `CMAKE_BUILD_TYPE` is empty in the `Build/x86_64/CMakeCache.txt` file.
+</Note>
+
+### CMake Settings
+
+Configure the following fields in the Open Project Wizard:
+
+**Build type:** `Default`
+
+**CMake Options:**
+```
+-DCMAKE_PREFIX_PATH=$CMakeProjectDir$/Build/lagom-install
+-DCMAKE_TOOLCHAIN_FILE=$CMakeProjectDir$/Build/x86_64/CMakeToolchain.txt
+-DSERENITY_ARCH=x86_64
+-DSERENITY_CACHE_DIR=$CMakeProjectDir$/Build/caches
+-GNinja
+```
+
+**Build Directory:** `Build/x86_64`
+
+<Warning>
+  CLion will complain that the toolchain file doesn't exist if you haven't run the SuperBuild configure step. The SuperBuild creates the Toolchain file.
+  
+  To re-create the file after removing your build directory, run:
+  ```bash
+  cmake -GNinja -S Meta/CMake/Superbuild -B Build/superbuild-x86_64
+  ```
+  
+  Or simply run `./Meta/serenity.sh run`
+</Warning>
+
+If you already have the project open, access these settings via:
+`File → Settings → Build, Execution, Deployment → CMake`
+
+## Excluding Build Artifacts
+
+Source files are copied to the `Build` directory during compilation. Exclude them from CLion indexing to avoid confusion and prevent accidental edits to copied files.
+
+<Steps>
+  <Step title="Exclude Build Directory">
+    1. Navigate to the `Project` tool window
+    2. Right-click the `Build` folder
+    3. Select `Mark Directory as → Excluded`
+  </Step>
+  
+  <Step title="Exclude Toolchain Directories (Optional)">
+    Follow the same procedure for:
+    - `Toolchain/Local`
+    - `Toolchain/Tarballs`
+    - `Toolchain/Build`
+  </Step>
+</Steps>
+
+## Include Headers for Code Insight
+
+Mark source directories to enable proper code comprehension:
+
+1. Right-click on each of these folders: `AK`, `Kernel`, `Userland`
+2. Select `Mark Directory as → Project Sources and Headers`
+
+<Warning>
+  If this is not configured correctly, CLion will show this warning for every file:
+  
+  > The file does not belong to any project target, code insight features might not work properly.
+</Warning>
+
+## Code Generation Settings
+
+Import the SerenityOS code style to match the project's coding standards:
+
+1. Go to `Settings → Editor → Code Style → C/C++`
+2. Click `Scheme → Cog icon → Import Scheme...`
+3. Import `CLionCodeStyleSettings.xml` from the Documentation directory
+
+## Quick Switching Between Kernel and Userland
+
+CLion needs to know whether you're working on Kernel or Userland code to correctly parse conditional compilation blocks:
+
+```cpp
+#ifdef KERNEL
+...
+#else
+...
+#endif
+```
+
+<Steps>
+  <Step title="Remove Auto-Generated Targets">
+    1. Click the configuration dropdown (top right)
+    2. Select `Edit Configurations`
+    3. Press `Ctrl+A` to select all auto-generated targets
+    4. Press `Delete` to remove them
+    
+    ![Add Configuration](CLion_Add_Configuration.png)
+    ![Kernel | Default](CLion_Add_Configuration_Existing.png)
+  </Step>
+  
+  <Step title="Add Kernel Configuration">
+    1. Press the `+` button
+    2. Select `CMake Application`
+    3. Name: `Kernel`
+    4. Target: `Kernel` (type to search)
+  </Step>
+  
+  <Step title="Add Userland Configuration">
+    1. Press the `+` button
+    2. Select `CMake Application`
+    3. Name: `Userland`
+    4. Target: `true`
+  </Step>
+</Steps>
+
+Now you can quickly switch context by clicking the `Kernel | Default` / `Userland | Default` button.
+
+## WSL-Specific Configuration
+
+### Toolchain Setup
+
+If the serenity directory is on the WSL filesystem:
+
+1. Go to `File → Settings → Build, Execution, Deployment → Toolchains`
+2. Click the `+` icon
+3. Select `WSL`
+4. In `Toolset`, select your WSL distribution
+
+### Terminal Configuration
+
+You can set the embedded terminal to use your WSL distribution's shell:
+
+<Note>
+  This is only useful if you don't use an X-window server for QEMU. You can install QEMU natively on Windows and allow WSL to use it. See [BuildInstructionsWindows.md](BuildInstructionsWindows.md) for details.
+</Note>
+
+<Steps>
+  <Step title="Locate the Terminal Emulator">
+    1. Open CMD with elevated privileges
+    2. Navigate to `C:/Program Files/WindowsApps/`
+    3. Run `dir` and look for your distribution (e.g., `CanonicalGroupLimited.Ubuntu20.04onWindows_...`)
+    4. cd into that directory
+    5. Copy the absolute path to the shell executable (e.g., `ubuntu2004.exe`)
+  </Step>
+  
+  <Step title="Configure CLion Terminal">
+    1. Go to `File → Settings → Tools → Terminal`
+    2. Paste the path to `Shell path`
+    3. Click OK
+  </Step>
+  
+  <Step title="Restart CLion">
+    Close and restart CLion for changes to take effect
+  </Step>
+</Steps>
+
+The default IDE terminal should now use WSL. You can now run `./Meta/serenity.sh` commands directly from CLion's terminal.
+
+<Tip>
+  Consider copying `serenity/Meta/CLion/run.sh` to your project directory so you don't have to manage git changes to the script.
+</Tip>

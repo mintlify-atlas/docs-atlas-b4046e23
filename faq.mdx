@@ -1,0 +1,189 @@
+---
+title: "Frequently Asked Questions"
+description: "Common questions about SerenityOS development, features, and philosophy"
+---
+
+## General Questions
+
+<Accordion title="Will SerenityOS support $THING?">
+  Maybe. Maybe not. There is no plan.
+
+  SerenityOS is a hobby project driven by what contributors find interesting and fun to implement. There's no formal roadmap or feature guarantee.
+</Accordion>
+
+<Accordion title="When will you implement $THING?">
+  Maybe someday. Maybe never. If you want to see something happen, you can do it yourself!
+
+  <Info>
+  SerenityOS is built by volunteers who implement features they're interested in. The best way to get a feature added is to contribute it yourself or convince someone else it would be fun to work on.
+  </Info>
+</Accordion>
+
+<Accordion title="Where are the ISO images?">
+  There are no ISO images. **This project does not cater to non-technical users.**
+
+  SerenityOS is designed for developers and requires building from source. If you're looking for a ready-to-use operating system, this isn't it.
+</Accordion>
+
+<Accordion title="Well, how do I run this thing then?">
+  Simple! Just refer to the [build instructions](/quickstart).
+
+  Building SerenityOS is straightforward if you have the right development tools installed. The quick start guide walks you through the entire process.
+</Accordion>
+
+## Building & Development
+
+<Accordion title="I did a git pull and now the build is broken! What do I do?">
+  If it builds on CI, it should build for you too. Try these steps:
+
+  <Steps>
+    <Step title="Rebuild the Toolchain">
+      The toolchain may need to be rebuilt:
+
+      ```bash
+      Meta/serenity.sh rebuild-toolchain
+      ```
+    </Step>
+
+    <Step title="Try a Clean Repository">
+      If rebuilding the toolchain doesn't help, try with a clean repo:
+
+      ```bash
+      git clean -xffd
+      ```
+
+      <Warning>
+      This will delete all untracked files. Make sure you've committed or backed up any work.
+      </Warning>
+    </Step>
+
+    <Step title="Ask for Help">
+      If you still can't figure it out, ask in the `#build-problems` channel on [Discord](https://serenityos.org/discord).
+    </Step>
+  </Steps>
+</Accordion>
+
+<Accordion title="Why don't you use $LIBRARY instead of implementing $FEATURE yourself?">
+  The SerenityOS project tries to maximize **hackability**, **accountability**, and **fun** by implementing everything ourselves.
+
+  This means:
+  - You can understand the entire system from top to bottom
+  - No hidden behaviors from third-party libraries
+  - Complete control over the implementation
+  - More learning opportunities for contributors
+  - Maximum enjoyment for the developers
+
+  <Note>
+  While this approach requires more work, it makes the system more cohesive and ensures everything follows the same design philosophy.
+  </Note>
+</Accordion>
+
+## Package Management
+
+<Accordion title="Does SerenityOS have a package manager?">
+  **In short:** No, SerenityOS does not have a "Linux-style" package manager with pre-built software.
+
+  ### Why Not?
+
+  SerenityOS uses a **monorepo approach**, meaning all software is built in the same style using the same tools. Additionally:
+
+  - The SerenityOS **ABI has no stability guarantee**
+  - Library symbols and syscall interfaces can change at any moment
+  - Only the POSIX C library API remains relatively stable
+  - Pre-built binaries would break frequently
+
+  <Info>
+  There's no reason to have a binary package manager because the entire system is built from source in a single repository.
+  </Info>
+
+  ### What About Third-Party Software?
+
+  The supported method to use third-party software is by compiling **ports** found in the `Ports` directory.
+
+  **What is a port?**
+  - A piece of software that can optionally be installed
+  - Might not have been built by the SerenityOS team
+  - Supports running on SerenityOS
+  - Always built from source
+  - Has its own install script
+
+  ### How to Install Ports
+
+  ```bash
+  cd Ports/curl
+  ./package.sh
+  ```
+
+  <Warning>
+  Currently, when running in a VM, ports should be cross-compiled on the host and added to the filesystem image before booting. Compiling ports on SerenityOS itself is possible but requires manual work and is not actively supported.
+  </Warning>
+
+  ### Future Development
+
+  In the future, port installation may be easier with the `pkg` tool. If you're interested in contributing, check out the `#package-manager` channel on Discord.
+
+  ### Excluding Components
+
+  It is possible to [exclude some SerenityOS components](https://github.com/SerenityOS/serenity/blob/master/Documentation/AdvancedBuildInstructions.md#component-configuration) from the build at compile time.
+</Accordion>
+
+## Legal & Licensing
+
+<Accordion title="Why is there an MP3 implementation if MP3 is protected by patents?">
+  <Warning>
+  This section is informational. We are not lawyers and this is not legal advice. Consult a qualified lawyer if you have legal questions regarding your use of SerenityOS software.
+  </Warning>
+
+  ### MP3 Patents Have Expired
+
+  MP3 was indeed originally protected by patents. However, **all MP3 patents have expired** since at least 2017, depending on where a specific patent was registered.
+
+  We believe it to be completely legal to implement MP3 as 2-clause BSD licensed software without acquiring patent licenses.
+
+  ### Other Formats
+
+  This does **NOT** apply to many other multimedia formats, such as:
+
+  - **H.264 (AVC)** video codec
+  - **H.265 (HEVC)** video codec
+  - **JPEG 2000** image format
+
+  <Info>
+  As long as there is any reason to believe that a format is covered by patents, there will not be an implementation in the SerenityOS monorepo. We believe patents are incompatible with the BSD 2-clause license in general.
+  </Info>
+
+  ### Third-Party Ports
+
+  Third-party ports with differing licenses can provide implementations for patented formats (such as ffmpeg). However:
+
+  - Using this third-party software might not be legal depending on your situation and use case
+  - See [ffmpeg's legal information](https://ffmpeg.org/legal.html) for details
+  - Everything regarding SerenityOS code is handled by [our license](https://github.com/SerenityOS/serenity/blob/master/LICENSE)
+  - Everything regarding third-party code is handled by the license of that particular software
+</Accordion>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card title="Join Discord" icon="discord" href="https://serenityos.org/discord">
+    Get real-time help from the community
+  </Card>
+  <Card title="Read the Docs" icon="book" href="https://github.com/SerenityOS/serenity/tree/master/Documentation">
+    Browse technical documentation
+  </Card>
+  <Card title="Contributing Guide" icon="code-pull-request" href="https://github.com/SerenityOS/serenity/blob/master/CONTRIBUTING.md">
+    Learn how to contribute
+  </Card>
+  <Card title="Issue Policy" icon="circle-exclamation" href="https://github.com/SerenityOS/serenity/blob/master/CONTRIBUTING.md#issue-policy">
+    Before opening an issue, read the policy
+  </Card>
+</CardGroup>
+
+## More Questions?
+
+If your question isn't answered here:
+
+1. Check the [documentation folder](https://github.com/SerenityOS/serenity/tree/master/Documentation) in the repository
+2. Search existing [GitHub issues](https://github.com/SerenityOS/serenity/issues)
+3. Ask in the appropriate Discord channel
+4. Read the [contributing guide](https://github.com/SerenityOS/serenity/blob/master/CONTRIBUTING.md) before opening a new issue

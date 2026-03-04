@@ -1,0 +1,358 @@
+---
+title: LibAudio
+description: Audio codec support and playback system for SerenityOS
+---
+
+LibAudio provides comprehensive audio file loading, decoding, and encoding capabilities for SerenityOS. It supports multiple audio formats and offers a unified interface for audio stream processing.
+
+## Overview
+
+LibAudio handles audio data through a plugin-based architecture that supports various codecs and formats:
+
+- **Loader System**: Format-agnostic audio file loading
+- **Codec Support**: FLAC, MP3, WAV, and QOA formats
+- **Sample Processing**: Multi-channel audio with various sample formats
+- **Metadata Extraction**: ID3 tags and embedded pictures
+- **Server Connection**: Integration with AudioServer for playback
+
+## Core Components
+
+### Loader
+
+The main interface for loading audio files.
+
+<ParamField path="Loader" type="class">
+  High-level audio file loader supporting multiple formats.
+  
+  ```cpp
+  class Loader : public RefCounted<Loader> {
+      static ErrorOr<NonnullRefPtr<Loader>, LoaderError> create(StringView path);
+      static ErrorOr<NonnullRefPtr<Loader>, LoaderError> create(ReadonlyBytes buffer);
+      
+      LoaderSamples get_more_samples(size_t samples_to_read_from_input = 128 * KiB);
+      MaybeLoaderError reset();
+      MaybeLoaderError seek(int const position);
+  };
+  ```
+  
+  **Factory Methods:**
+  - `create(StringView path)`: Load from file path
+  - `create(ReadonlyBytes buffer)`: Load from memory buffer
+</ParamField>
+
+### Audio Properties
+
+<ParamField path="sample_rate" type="method">
+  Get the sample rate in Hz.
+  
+  ```cpp
+  u32 sample_rate() const;
+  ```
+  
+  Common values: 44100, 48000, 96000 Hz
+</ParamField>
+
+<ParamField path="num_channels" type="method">
+  Get the number of audio channels.
+  
+  ```cpp
+  u16 num_channels() const;
+  ```
+  
+  Typical values: 1 (mono), 2 (stereo), 6 (5.1 surround)
+</ParamField>
+
+<ParamField path="total_samples" type="method">
+  Get total sample count (per channel).
+  
+  ```cpp
+  int total_samples() const;
+  ```
+  
+  For a 3-second stereo file at 44.1kHz: returns 132,300
+</ParamField>
+
+<ParamField path="loaded_samples" type="method">
+  Get number of samples loaded so far.
+  
+  ```cpp
+  int loaded_samples() const;
+  ```
+</ParamField>
+
+### Sample Formats
+
+<Accordion title="Supported PCM Formats">
+  LibAudio supports various PCM sample formats:
+  
+  ```cpp
+  enum class PcmSampleFormat {
+      Uint8,
+      Int16,
+      Int24,
+      Int32,
+      Float32,
+      Float64
+  };
+  
+  u16 bits_per_sample() const;
+  PcmSampleFormat pcm_format() const;
+  ```
+  
+  The `Sample` type represents a normalized floating-point sample value.
+</Accordion>
+
+## Supported Formats
+
+### FLAC (Free Lossless Audio Codec)
+
+<ParamField path="FlacLoader" type="class">
+  Lossless audio compression format loader.
+  
+  **Features:**
+  - Lossless compression
+  - Seek table support
+  - Embedded metadata and pictures
+  - Streaming decoding
+  
+  **Location:** `LibAudio/FlacLoader.h`
+</ParamField>
+
+### MP3 (MPEG Audio Layer III)
+
+<ParamField path="MP3Loader" type="class">
+  Lossy audio compression format loader.
+  
+  **Features:**
+  - Frame-based decoding
+  - Variable and constant bitrate support
+  - ID3v2 tag parsing
+  - Huffman table decoding
+  
+  **Location:** `LibAudio/MP3Loader.h`
+</ParamField>
+
+### WAV (Waveform Audio)
+
+Uncompressed PCM audio format with RIFF container.
+
+### QOA (Quite OK Audio)
+
+Lightweight lossy audio compression format.
+
+## Metadata Support
+
+<ParamField path="Metadata" type="struct">
+  Audio file metadata including tags and embedded data.
+  
+  ```cpp
+  Metadata const& metadata() const;
+  ```
+  
+  Contains:
+  - Artist, album, title information
+  - Track numbers and dates
+  - Genre and comment fields
+  - Custom metadata tags
+</ParamField>
+
+### Picture Data
+
+<Accordion title="Embedded Album Art">
+  LibAudio can extract embedded pictures from audio files:
+  
+  ```cpp
+  struct PictureData {
+      ID3PictureType type;        // FrontCover, BackCover, etc.
+      String mime_string;          // "image/jpeg", "image/png"
+      String description_string;
+      
+      u32 width;
+      u32 height;
+      u32 color_depth;
+      u32 colors;
+      
+      Vector<u8> data;             // Image data
+  };
+  
+  Vector<PictureData> const& pictures() const;
+  ```
+  
+  **Picture Types:**
+  - `FrontCover`: Album front cover
+  - `BackCover`: Album back cover
+  - `LeadArtist`: Lead artist photo
+  - `Media`: Media (e.g., CD) image
+  - And 17 other types defined in ID3v2 spec
+</Accordion>
+
+## Seeking and Navigation
+
+### Seek Points
+
+<ParamField path="SeekTable" type="class">
+  Efficient seeking within audio streams.
+  
+  ```cpp
+  struct SeekPoint {
+      u64 sample_index;
+      u64 byte_offset;
+  };
+  
+  class SeekTable {
+      Optional<SeekPoint const&> seek_point_before(u64 sample_index) const;
+      ErrorOr<void> insert_seek_point(SeekPoint);
+      size_t size() const;
+  };
+  ```
+  
+  Seek tables enable fast random access within compressed audio files.
+</ParamField>
+
+<Info>
+  **Seeking Precision:**
+  - Maximum seek point distance: 1000ms
+  - Seek tolerance: ±5000ms
+  - Loaders may provide frame-accurate seeking
+</Info>
+
+## Audio Server Integration
+
+### Connection Management
+
+<Accordion title="Server Connections">
+  LibAudio provides connections to AudioServer and AudioManagerServer:
+  
+  ```cpp
+  class ConnectionToServer {
+      // Main audio playback connection
+  };
+  
+  class ConnectionToManagerServer {
+      // Audio device and configuration management
+  };
+  ```
+  
+  **Location:**
+  - `ConnectionToServer.h`: Audio playback
+  - `ConnectionToManagerServer.h`: Device management
+</Accordion>
+
+## Plugin Architecture
+
+<ParamField path="LoaderPlugin" type="class">
+  Base class for format-specific audio decoders.
+  
+  ```cpp
+  class LoaderPlugin {
+      virtual ErrorOr<Vector<FixedArray<Sample>>, LoaderError> 
+          load_chunks(size_t samples_to_read_from_input) = 0;
+      
+      virtual MaybeLoaderError reset() = 0;
+      virtual MaybeLoaderError seek(int const sample_index) = 0;
+      
+      virtual int loaded_samples() = 0;
+      virtual int total_samples() = 0;
+      virtual u32 sample_rate() = 0;
+      virtual u16 num_channels() = 0;
+      
+      virtual ByteString format_name() = 0;
+      virtual PcmSampleFormat pcm_format() = 0;
+  };
+  ```
+</ParamField>
+
+### Chunk-Based Loading
+
+<Info>
+  Audio is loaded in chunks for efficient streaming:
+  - Chunks are format-specific (FLAC frames, MP3 frames, etc.)
+  - Default buffer size: 8 KiB
+  - Loaders return multiple chunks to satisfy sample requests
+  - May overshoot requested sample count by small amounts
+</Info>
+
+## Error Handling
+
+<ParamField path="LoaderError" type="enum">
+  Audio loading and decoding errors.
+  
+  ```cpp
+  using LoaderSamples = ErrorOr<FixedArray<Sample>, LoaderError>;
+  using MaybeLoaderError = ErrorOr<void, LoaderError>;
+  ```
+  
+  **Location:** `LibAudio/LoaderError.h`
+</ParamField>
+
+## Generic Types
+
+<Accordion title="Sample Representation">
+  LibAudio uses normalized floating-point samples:
+  
+  ```cpp
+  // Defined in GenericTypes.h
+  struct Sample {
+      float left;
+      float right;
+      // ... additional channels
+  };
+  ```
+  
+  Samples are normalized to the range [-1.0, 1.0] regardless of source format.
+</Accordion>
+
+## Encoding Support
+
+<ParamField path="FlacWriter" type="class">
+  FLAC encoding capabilities.
+  
+  ```cpp
+  class FlacWriter {
+      // Encode audio to FLAC format
+  };
+  ```
+  
+  **Location:** `LibAudio/FlacWriter.h`
+</ParamField>
+
+## Usage Example
+
+```cpp
+// Load audio file
+auto loader = TRY(Audio::Loader::create("/path/to/audio.flac"));
+
+// Get audio properties
+dbgln("Sample rate: {} Hz", loader->sample_rate());
+dbgln("Channels: {}", loader->num_channels());
+dbgln("Duration: {} samples", loader->total_samples());
+dbgln("Format: {}", loader->format_name());
+
+// Read samples
+while (loader->loaded_samples() < loader->total_samples()) {
+    auto samples = TRY(loader->get_more_samples());
+    // Process samples...
+}
+
+// Access metadata
+auto const& metadata = loader->metadata();
+dbgln("Title: {}", metadata.title);
+
+// Extract album art
+for (auto const& picture : loader->pictures()) {
+    if (picture.type == Audio::ID3PictureType::FrontCover) {
+        // Use picture.data
+    }
+}
+```
+
+## Source Location
+
+**Directory:** `Userland/Libraries/LibAudio/`
+
+**Key Files:**
+- `Loader.h`: Main loader interface
+- `GenericTypes.h`: Sample and common types
+- `FlacLoader.h`: FLAC decoder
+- `MP3Loader.h`: MP3 decoder
+- `LoaderError.h`: Error definitions

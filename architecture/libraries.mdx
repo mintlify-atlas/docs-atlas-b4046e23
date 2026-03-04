@@ -1,0 +1,563 @@
+---
+title: Library Architecture
+description: Overview of SerenityOS library organization and design
+---
+
+SerenityOS includes approximately 80 libraries in `Userland/Libraries/`, all built from scratch. These libraries range from fundamental data structures (AK) to a complete web browser engine (LibWeb).
+
+## Library Organization
+
+Libraries are categorized by functionality:
+
+<Tabs>
+  <Tab title="Foundation">
+    **Core Infrastructure:**
+    - **AK**: Application Kit - fundamental data structures
+    - **LibC**: C standard library (POSIX-compatible)
+    - **LibMain**: Modern main() entry point
+    - **LibCore**: Core functionality (event loop, I/O, system)
+    - **LibThreading**: Threading primitives
+  </Tab>
+  
+  <Tab title="Graphics & GUI">
+    **User Interface:**
+    - **LibGfx**: 2D graphics primitives
+    - **LibGUI**: GUI framework
+    - **LibGL**: OpenGL implementation
+    - **LibGLSL**: GLSL shader compiler
+    - **LibGPU**: GPU abstraction
+    - **LibAccelGfx**: Hardware-accelerated graphics
+    - **LibVideo**: Video playback
+  </Tab>
+  
+  <Tab title="Web">
+    **Browser Engine:**
+    - **LibWeb**: HTML/CSS/JavaScript engine
+    - **LibJS**: JavaScript interpreter (ES2021+)
+    - **LibWasm**: WebAssembly runtime
+    - **LibWebView**: Web view widget
+  </Tab>
+  
+  <Tab title="Formats & Codecs">
+    **File Format Support:**
+    - **LibGfx**: Image formats (PNG, JPEG, GIF, BMP, QOI, etc.)
+    - **LibAudio**: Audio formats (WAV, FLAC, MP3)
+    - **LibVideo**: Video formats
+    - **LibArchive**: Archive formats (ZIP, TAR, GZIP)
+    - **LibCompress**: Compression algorithms
+    - **LibPDF**: PDF rendering
+    - **LibMarkdown**: Markdown parsing
+  </Tab>
+  
+  <Tab title="Networking">
+    **Network Protocols:**
+    - **LibHTTP**: HTTP client
+    - **LibTLS**: TLS implementation
+    - **LibDNS**: DNS resolution
+    - **LibGemini**: Gemini protocol
+    - **LibIMAP**: IMAP client
+  </Tab>
+  
+  <Tab title="Development">
+    **Developer Tools:**
+    - **LibCpp**: C++ parser
+    - **LibCodeComprehension**: Code analysis
+    - **LibDebug**: Debugging support
+    - **LibELF**: ELF binary parsing
+    - **LibDisassembly**: Disassembler
+    - **LibTest**: Testing framework
+    - **LibCMake**: CMake support
+  </Tab>
+</Tabs>
+
+## AK: Application Kit
+
+AK is the foundation library providing fundamental data structures and utilities:
+
+<Info>
+Located in the `/AK` directory at the repository root, AK is usable in both kernel and userspace.
+</Info>
+
+### Core Data Structures
+
+<AccordionGroup>
+  <Accordion title="Strings">
+    **String Types:**
+    - `String`: Modern UTF-8 string (immutable, reference-counted)
+    - `ByteString`: Legacy byte string
+    - `StringView`: Non-owning string view
+    - `FlyString`: Interned string for fast comparison
+    - `StringBuilder`: Efficient string building
+    
+    ```cpp
+    // Modern string usage
+    String name = "SerenityOS"sv;
+    StringView view = name.view();
+    
+    StringBuilder builder;
+    builder.append("Hello "sv);
+    builder.append(name);
+    String greeting = TRY(builder.to_string());
+    ```
+  </Accordion>
+  
+  <Accordion title="Containers">
+    **Collection Types:**
+    - `Vector<T>`: Dynamic array (like std::vector)
+    - `Array<T, N>`: Fixed-size array
+    - `FixedArray<T>`: Runtime-sized, non-resizable array
+    - `HashMap<K, V>`: Hash table
+    - `HashTable<T>`: Hash set
+    - `RedBlackTree<T>`: Balanced binary tree
+    - `IntrusiveList<T>`: Intrusive linked list (OOM-safe)
+    - `CircularQueue<T>`: Ring buffer
+    - `Queue<T>`: FIFO queue
+    - `Stack<T>`: LIFO stack
+    
+    ```cpp
+    // Vector usage
+    Vector<int> numbers;
+    TRY(numbers.try_append(1));
+    TRY(numbers.try_append(2));
+    
+    // HashMap usage
+    HashMap<String, int> scores;
+    TRY(scores.try_set("player1"sv, 100));
+    ```
+  </Accordion>
+  
+  <Accordion title="Smart Pointers">
+    **Memory Management:**
+    - `RefPtr<T>`: Reference-counted pointer (nullable)
+    - `NonnullRefPtr<T>`: Non-null reference-counted pointer
+    - `OwnPtr<T>`: Unique ownership pointer (nullable)
+    - `NonnullOwnPtr<T>`: Non-null unique pointer
+    - `WeakPtr<T>`: Weak reference
+    
+    ```cpp
+    // Reference counting
+    RefPtr<Object> obj = Object::create();
+    if (obj) {
+        obj->do_something();
+    }
+    
+    // Unique ownership
+    OwnPtr<Data> data = make<Data>();
+    auto moved = move(data);  // Transfer ownership
+    ```
+  </Accordion>
+  
+  <Accordion title="Utility Types">
+    **Helpers:**
+    - `Optional<T>`: Maybe-type (like std::optional)
+    - `Variant<Ts...>`: Type-safe union
+    - `ErrorOr<T>`: Result type for error handling
+    - `Span<T>`: Non-owning array view
+    - `Function<R(Args...)>`: Function wrapper
+    - `Time`: Time and duration types
+    - `Checked<T>`: Overflow-checking arithmetic
+    
+    ```cpp
+    // Optional usage
+    Optional<int> maybe_value = find_value();
+    if (maybe_value.has_value()) {
+        int value = maybe_value.value();
+    }
+    
+    // ErrorOr usage
+    ErrorOr<int> result = parse_number("42"sv);
+    if (result.is_error()) {
+        return result.error();
+    }
+    int number = result.value();
+    ```
+  </Accordion>
+  
+  <Accordion title="Streams & I/O">
+    **Asynchronous I/O:**
+    - `AsyncStream`: Base for async streams
+    - `AsyncInputStream`: Async input
+    - `Stream`: Synchronous stream base
+    - `BufferedStream`: Buffered I/O
+    - `CircularBuffer`: Circular buffer
+    
+    See [Asynchronous Design Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/AsynchronousDesign.md) for details.
+  </Accordion>
+</AccordionGroup>
+
+### AK Highlights
+
+<CodeGroup>
+```cpp Error Handling
+// TRY macro for seamless error propagation
+ErrorOr<void> process_file(StringView path)
+{
+    auto file = TRY(open_file(path));
+    auto data = TRY(file->read_all());
+    TRY(process_data(data));
+    return {};
+}
+
+// MUST macro for operations that should never fail
+void critical_operation()
+{
+    MUST(vector.try_append(42));  // Will crash if fails
+}
+```
+
+```cpp Iterators
+// Range-based for loops
+Vector<int> numbers = { 1, 2, 3, 4, 5 };
+
+for (int n : numbers) {
+    dbgln("Number: {}", n);
+}
+
+// Enumerate helper
+for (auto [index, value] : enumerate(numbers)) {
+    dbgln("[{}] = {}", index, value);
+}
+```
+
+```cpp Format Strings
+// Type-safe formatting
+String message = String::formatted("User {} logged in at {}",
+    username, timestamp);
+
+// Debug output
+dbgln("Processing {} items", count);
+warnln("Warning: Low memory");
+outln("Result: {}", result);
+```
+</CodeGroup>
+
+## LibC: C Standard Library
+
+SerenityOS's custom C library provides POSIX compatibility:
+
+<Tabs>
+  <Tab title="Standard Headers">
+    - `stdio.h`: Standard I/O
+    - `stdlib.h`: Memory, program control
+    - `string.h`: String operations
+    - `unistd.h`: POSIX API
+    - `pthread.h`: Threading
+    - `math.h`: Mathematics
+    - `time.h`: Time functions
+  </Tab>
+  
+  <Tab title="System Extensions">
+    - `serenity.h`: SerenityOS-specific APIs
+    - `sys/mman.h`: Memory management
+    - `sys/socket.h`: Networking
+    - `sys/stat.h`: File status
+    - `sys/ioctl.h`: Device control
+  </Tab>
+  
+  <Tab title="Special Features">
+    - **Thread-safe**: All functions are thread-safe
+    - **Security**: Implements pledge() and unveil()
+    - **Modern**: Uses modern compiler features
+    - **Clean**: No legacy cruft
+  </Tab>
+</Tabs>
+
+## LibCore: Core Functionality
+
+LibCore provides essential userspace functionality:
+
+### Event Loop
+
+<Info>
+See [EventLoop Documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/EventLoop.md) for comprehensive details.
+</Info>
+
+The event loop is central to GUI and network applications:
+
+```cpp
+#include <LibCore/EventLoop.h>
+
+int main()
+{
+    Core::EventLoop loop;
+    
+    // Deferred execution
+    Core::deferred_invoke([&] {
+        dbgln("This runs on next event loop iteration");
+    });
+    
+    // Timers
+    auto timer = Core::Timer::create();
+    timer->set_interval(1000);
+    timer->on_timeout = [] {
+        dbgln("Timer fired!");
+    };
+    timer->start();
+    
+    return loop.exec();
+}
+```
+
+### File I/O
+
+```cpp
+// Modern file operations
+ErrorOr<void> read_config()
+{
+    auto file = TRY(Core::File::open("/etc/config.conf"sv,
+        Core::File::OpenMode::Read));
+    
+    auto buffer = TRY(ByteBuffer::create_uninitialized(file->size()));
+    TRY(file->read_until_filled(buffer));
+    
+    return {};
+}
+```
+
+### Process Management
+
+```cpp
+// Spawn child process
+ErrorOr<void> run_command()
+{
+    auto result = TRY(Core::command("ls", { "-la" }, {}));
+    outln("Exit code: {}", result.exit_code);
+    outln("Output: {}", result.output);
+    return {};
+}
+```
+
+## LibGUI: GUI Framework
+
+LibGUI provides the graphical user interface framework:
+
+<CardGroup cols={2}>
+  <Card title="Widgets" icon="square">
+    - Button, Label, TextBox, TextEditor
+    - ListView, TableView, TreeView
+    - ScrollBar, Slider, ProgressBar
+    - MenuBar, Menu, MenuItem
+    - Window, Dialog, MessageBox
+    - Layout managers (Horizontal, Vertical, etc.)
+  </Card>
+  
+  <Card title="Models" icon="database">
+    - Model-View architecture
+    - AbstractTableModel
+    - SortingProxyModel
+    - FileSystemModel
+    - Custom model support
+  </Card>
+</CardGroup>
+
+### Example GUI Application
+
+```cpp
+#include <LibGUI/Application.h>
+#include <LibGUI/Button.h>
+#include <LibGUI/Window.h>
+#include <LibMain/Main.h>
+
+ErrorOr<int> serenity_main(Main::Arguments arguments)
+{
+    auto app = TRY(GUI::Application::create(arguments));
+    
+    auto window = GUI::Window::construct();
+    window->set_title("My App");
+    window->resize(300, 200);
+    
+    auto button = window->set_main_widget<GUI::Button>("Click me!");
+    button->on_click = [&](auto) {
+        GUI::MessageBox::show(window, "Button clicked!", "Info");
+    };
+    
+    window->show();
+    return app->exec();
+}
+```
+
+## LibWeb: Web Engine
+
+LibWeb is a complete browser engine built from scratch:
+
+<AccordionGroup>
+  <Accordion title="HTML Parser & DOM">
+    - HTML5 compliant parser
+    - Full DOM tree implementation
+    - DOM Level 2 Events
+    - Shadow DOM support
+    - Custom elements
+  </Accordion>
+  
+  <Accordion title="CSS Engine">
+    - CSS3 selector engine
+    - Flexbox layout
+    - Grid layout (in progress)
+    - Animations and transitions
+    - Media queries
+  </Accordion>
+  
+  <Accordion title="JavaScript Engine (LibJS)">
+    - ES2021+ support
+    - JIT compilation (in progress)
+    - Garbage collection
+    - Module system
+    - Full standard library
+  </Accordion>
+  
+  <Accordion title="WebAssembly (LibWasm)">
+    - WASM bytecode interpreter
+    - Module loading
+    - JavaScript integration
+    - Growing specification support
+  </Accordion>
+  
+  <Accordion title="Web APIs">
+    - Fetch API
+    - XMLHttpRequest
+    - Canvas 2D
+    - WebGL (in progress)
+    - Web Storage
+    - Web Workers
+  </Accordion>
+</AccordionGroup>
+
+Check compliance:
+- [JavaScript Test262 Results](https://serenityos.github.io/libjs-website/test262/)
+- [CSS Compatibility](https://css.tobyase.de/)
+- [WebAssembly Tests](https://serenityos.github.io/libjs-website/wasm/)
+
+## LibIPC: Inter-Process Communication
+
+LibIPC provides type-safe IPC between processes:
+
+```cpp
+// Define IPC interface in .ipc file
+endpoint MyService
+{
+    SomeMethod(String data) => (i32 result)
+    AnotherMethod() =|  // One-way message
+}
+
+// Generated client/server stubs handle serialization
+```
+
+See [IPC Architecture](./ipc) for details.
+
+## Specialized Libraries
+
+<Tabs>
+  <Tab title="Multimedia">
+    - **LibAudio**: Audio codecs and playback
+    - **LibVideo**: Video decoding
+    - **LibDSP**: Digital signal processing
+    - **LibSynthesizer**: Audio synthesis
+  </Tab>
+  
+  <Tab title="Data Formats">
+    - **LibArchive**: ZIP, TAR, GZIP
+    - **LibPDF**: PDF rendering
+    - **LibMarkdown**: Markdown parsing
+    - **LibXML**: XML parsing
+    - **LibSQL**: SQL database
+  </Tab>
+  
+  <Tab title="Security">
+    - **LibCrypto**: Cryptographic primitives
+    - **LibTLS**: TLS 1.2/1.3 implementation
+    - **LibCrypt**: Password hashing
+  </Tab>
+  
+  <Tab title="Games & Apps">
+    - **LibCards**: Card game framework
+    - **LibChess**: Chess engine
+    - **LibDesktop**: Desktop integration
+    - **LibGfx**: Graphics primitives
+  </Tab>
+</Tabs>
+
+## Library Design Patterns
+
+<CodeGroup>
+```cpp Fallible Constructors
+// Use static create() methods
+class MyClass {
+public:
+    static ErrorOr<NonnullOwnPtr<MyClass>> create()
+    {
+        auto buffer = TRY(ByteBuffer::create_uninitialized(1024));
+        auto instance = TRY(adopt_nonnull_own_or_enomem(
+            new (nothrow) MyClass(move(buffer))));
+        TRY(instance->initialize());
+        return instance;
+    }
+    
+private:
+    MyClass(ByteBuffer buffer) : m_buffer(move(buffer)) {}
+};
+```
+
+```cpp RefCounted Objects
+// GUI objects are reference-counted
+class Widget : public RefCounted<Widget> {
+public:
+    static NonnullRefPtr<Widget> construct()
+    {
+        return adopt_ref(*new Widget());
+    }
+    
+protected:
+    Widget() = default;
+};
+
+RefPtr<Widget> widget = Widget::construct();
+```
+
+```cpp Error Propagation
+// Consistent error handling
+ErrorOr<String> load_data()
+{
+    auto file = TRY(Core::File::open("data.txt"sv,
+        Core::File::OpenMode::Read));
+    auto contents = TRY(file->read_until_eof());
+    return String::from_utf8(contents);
+}
+```
+</CodeGroup>
+
+## Cross-Library Dependencies
+
+Libraries have clear dependency relationships:
+
+```
+AK (foundation)
+ ↓
+LibC (C standard library)
+ ↓
+LibCore (event loop, I/O)
+ ↓
+├─→ LibGfx (graphics) ─→ LibGUI (widgets)
+├─→ LibIPC (communication)
+├─→ LibThreading (threads)
+└─→ LibJS → LibWeb (browser engine)
+```
+
+## Further Reading
+
+<CardGroup cols={2}>
+  <Card title="IPC Details" icon="exchange" href="./ipc">
+    Learn about inter-process communication
+  </Card>
+  
+  <Card title="Event Loop" icon="rotate" href="/source/Documentation/EventLoop.md">
+    Understand the event system
+  </Card>
+  
+  <Card title="Smart Pointers" icon="brain" href="/source/Documentation/SmartPointers.md">
+    Memory management patterns
+  </Card>
+  
+  <Card title="Coding Patterns" icon="code" href="/source/Documentation/Patterns.md">
+    Common patterns and idioms
+  </Card>
+</CardGroup>

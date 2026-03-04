@@ -1,0 +1,178 @@
+---
+title: Debugging SerenityOS
+description: Tools and techniques for debugging SerenityOS applications and kernel code
+---
+
+SerenityOS provides comprehensive debugging capabilities for both userspace applications and kernel development.
+
+## Debug Macros
+
+Many parts of the SerenityOS codebase have debug functionality through component-specific macros that print additional messages to the debug console.
+
+### Enabling Debug Macros
+
+Debug macros follow the pattern `<component_name>_DEBUG` and can be enabled individually at build time:
+
+```bash
+# Enable process debugging
+cmake -B Build/x86_64 -DPROCESS_DEBUG=ON
+
+# Enable multiple debug macros
+cmake -B Build/x86_64 -DPROCESS_DEBUG=ON -DSCHEDULER_DEBUG=ON
+```
+
+<Warning>
+Do not enable `ENABLE_ALL_THE_DEBUG_MACROS` in normal development. It clutters console output and makes the system run very slowly. Only enable the specific debug macros you need.
+</Warning>
+
+Available debug macros are listed in `Meta/CMake/all_the_debug_macros.cmake`.
+
+## Sanitizers
+
+### Address Sanitizer
+
+Address Sanitizer catches memory corruption bugs including buffer overflows and memory leaks.
+
+<Accordion title="Enable Address Sanitizer for Lagom tests">
+```bash
+cmake -GNinja -S Meta/Lagom -B Build/lagom \
+  -DBUILD_LAGOM=ON \
+  -DENABLE_ADDRESS_SANITIZER=ON
+
+cd Build/lagom
+ninja
+CTEST_OUTPUT_ON_FAILURE=1 SERENITY_SOURCE_DIR=${PWD}/../.. ninja test
+```
+</Accordion>
+
+<Accordion title="Enable Kernel Address Sanitizer">
+```bash
+cmake -B Build/x86_64 -DENABLE_KERNEL_ADDRESS_SANITIZER=ON
+ninja -C Build/x86_64 install
+```
+</Accordion>
+
+### Undefined Behavior Sanitizer
+
+Detects undefined behavior like null pointer dereferences and signed integer overflows.
+
+<Accordion title="Enable for userspace">
+```bash
+cmake -B Build/x86_64 -DENABLE_UNDEFINED_SANITIZER=ON
+```
+
+To make errors fatal and reduce performance overhead:
+
+```bash
+cmake -B Build/x86_64 \
+  -DENABLE_UNDEFINED_SANITIZER=ON \
+  -DUNDEFINED_BEHAVIOR_IS_FATAL=ON
+```
+</Accordion>
+
+<Accordion title="Enable for kernel">
+```bash
+cmake -B Build/x86_64 -DENABLE_KERNEL_UNDEFINED_SANITIZER=ON
+
+# Make UBSan errors always deadly
+cmake -B Build/x86_64 \
+  -DENABLE_KERNEL_UNDEFINED_SANITIZER=ON \
+  -DENABLE_KERNEL_UNDEFINED_SANITIZER_ALWAYS_DEADLY=ON
+```
+</Accordion>
+
+<Accordion title="Running tests with sanitizers">
+Ensure UBSan errors fail the test:
+
+```bash
+UBSAN_OPTIONS=halt_on_error=1 \
+CTEST_OUTPUT_ON_FAILURE=1 \
+SERENITY_SOURCE_DIR=${PWD}/.. \
+ninja test
+```
+</Accordion>
+
+### Memory Sanitizer
+
+Enables runtime checks for uninitialized memory accesses in Lagom test cases:
+
+```bash
+cmake -GNinja -S Meta/Lagom -B Build/lagom \
+  -DBUILD_LAGOM=ON \
+  -DENABLE_MEMORY_SANITIZER=ON
+```
+
+<Tip>
+Sanitizer builds take significantly longer than normal builds and will affect cache performance in tools like `ccache`.
+</Tip>
+
+## Kernel Debugging
+
+### Extra Kernel Debug Symbols
+
+For easier debugging of kernel code, enable extra debug symbols:
+
+```bash
+cmake -B Build/x86_64 -DENABLE_EXTRA_KERNEL_DEBUG_SYMBOLS=ON
+```
+
+This sets `-Og` and `-ggdb3` compile options for the kernel. By default, the kernel is built with `-O2`.
+
+### GDB Integration
+
+<Accordion title="Debugging with GDB">
+SerenityOS supports GDB debugging through QEMU:
+
+```bash
+# The build system automatically enables KVM debugging if available
+# To disable GDB socket:
+SERENITY_DISABLE_GDB_SOCKET=1 ninja run
+```
+
+<Warning>
+If you encounter "KVM doesn't support guest debugging":
+- Update your host kernel to at least version 5.10
+- Verify your distro has QEMU debug features enabled
+- Or disable KVM debugging: `SERENITY_DISABLE_GDB_SOCKET=1`
+</Warning>
+</Accordion>
+
+### Kernel Coverage Collection
+
+For coverage-guided kernel fuzzing:
+
+```bash
+cmake -B Build/x86_64 -DENABLE_KERNEL_COVERAGE_COLLECTION=ON
+```
+
+This enables the KCOV API and kernel coverage collection instrumentation.
+
+## Userspace Coverage
+
+Enable coverage collection for userspace (Clang builds only):
+
+```bash
+cmake -B Build/x86_64 -DENABLE_USERSPACE_COVERAGE_COLLECTION=ON
+```
+
+## Running Tests
+
+See the [Testing](/development/testing) guide for information on running and debugging tests.
+
+## CMake Cache Manipulation
+
+Debug flags can be modified after an initial build:
+
+```bash
+# Initial build
+cmake -GNinja -S Meta/CMake/Superbuild -B Build/superbuild-x86_64
+cmake --build Build/superbuild-x86_64
+
+# Enable debug options
+cmake -B Build/x86_64 -DPROCESS_DEBUG=ON -DBUILD_BROWSER=OFF
+ninja -C Build/x86_64 install
+```
+
+<Tip>
+Use `ccmake` (TUI interface) or `cmake-gui` for interactive cache manipulation.
+</Tip>

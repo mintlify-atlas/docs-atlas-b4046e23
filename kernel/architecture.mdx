@@ -1,0 +1,452 @@
+---
+title: Kernel Architecture
+description: Detailed architecture of the SerenityOS kernel subsystems and components
+---
+
+## Architecture Overview
+
+The SerenityOS kernel follows a modular monolithic architecture, where all kernel services run in privileged mode but are organized into well-defined subsystems with clear interfaces.
+
+## Directory Structure
+
+The kernel source code is organized by functionality:
+
+```
+Kernel/
+├── API/              # Kernel-userspace interface definitions
+├── Arch/             # Architecture-specific code (x86_64, aarch64, riscv64)
+├── Boot/             # Boot process and command line handling
+├── Bus/              # Bus controllers (PCI, USB, I2C, VirtIO)
+├── Devices/          # Device drivers and device management
+├── FileSystem/       # VFS and filesystem implementations
+├── Firmware/         # Firmware interfaces (ACPI, Device Tree)
+├── Heap/             # Kernel heap allocator
+├── Interrupts/       # Interrupt handling framework
+├── Library/          # Kernel utility libraries
+├── Locking/          # Synchronization primitives
+├── Memory/           # Memory management subsystem
+├── Net/              # Network stack
+├── Prekernel/        # Early boot code
+├── Security/         # Security features and random number generation
+├── Syscalls/         # System call implementations
+├── Tasks/            # Process and thread management
+└── Time/             # Time management and timers
+```
+
+## Core Subsystems
+
+### Task Management
+
+Located in `Kernel/Tasks/`, this subsystem handles all aspects of process and thread execution.
+
+#### Process Management
+
+**Key Classes**: `Process`, `ProcessGroup`
+
+The `Process` class (defined in `Kernel/Tasks/Process.h`) represents an executing program with:
+
+- **Address Space**: Virtual memory regions via `Memory::AddressSpace`
+- **Credentials**: User/group IDs and capabilities via `Security::Credentials`
+- **File Descriptors**: Open file descriptions managed per-process
+- **Threads**: One or more threads of execution
+- **Contexts**: VFS root, hostname, and process list contexts
+
+<Info>
+Processes support pledge/unveil security mechanisms that restrict system call access and filesystem visibility.
+</Info>
+
+<Accordion title="Process Security Features">
+  **Pledge**: Restricts which system calls a process can use:
+  - `stdio`, `rpath`, `wpath`, `cpath` - Basic I/O operations
+  - `inet`, `unix` - Network access
+  - `proc`, `exec` - Process management
+  - `ptrace` - Debugging capabilities
+  - And many more defined in `ENUMERATE_PLEDGE_PROMISES`
+
+  **Unveil**: Restricts filesystem access to specific paths with defined permissions
+
+  **Jails**: Can be set "until exit" to prevent escape from containerization
+</Accordion>
+
+#### Thread Management
+
+**Key Class**: `Thread` (in `Kernel/Tasks/Thread.h`)
+
+Threads are the schedulable units of execution:
+
+- Each thread has its own kernel stack and register state
+- Thread-specific data (TSD) support
+- Priority-based scheduling (0-99 range)
+- CPU affinity support for SMP systems
+- Thread blockers for synchronization
+
+**Thread States**:
+- Runnable: Ready to execute
+- Running: Currently executing
+- Blocked: Waiting on a resource
+- Dying: Terminating
+- Dead: Finished execution
+
+#### Scheduler
+
+**Key Class**: `Scheduler` (in `Kernel/Tasks/Scheduler.cpp`)
+
+The scheduler implements priority-based multi-level queue scheduling:
+
+```cpp
+// Time slice allocation
+static u32 time_slice_for(Thread const& thread)
+{
+    // One time slice unit == 4ms (assuming 250 ticks/second)
+    if (thread.is_idle_thread())
+        return 1;
+    return 2;
+}
+```
+
+- **Priority Queues**: 32 priority levels mapped from thread priorities
+- **CPU Affinity**: Threads can be bound to specific CPUs
+- **Fair Scheduling**: Threads rotate within their priority level
+- **Idle Thread**: Lowest priority, runs when no work available
+
+<Note>
+The scheduler uses spinlock-protected ready queues (`g_ready_queues`) to safely manage runnable threads across multiple CPUs.
+</Note>
+
+### Memory Management
+
+Located in `Kernel/Memory/`, this subsystem provides virtual and physical memory management.
+
+#### Physical Memory
+
+**Key Classes**: `PhysicalRAMPage`, `PhysicalRegion`, `PhysicalZone`, `MemoryManager`
+
+- **Physical Pages**: 4KB units tracked individually
+- **Physical Regions**: Contiguous ranges of physical memory
+- **Physical Zones**: NUMA-aware memory allocation zones
+- **Memory Types**: Usable, Reserved, ACPI_Reclaimable, ACPI_NVS, BadMemory
+
+#### Virtual Memory
+
+**Key Classes**: `AddressSpace`, `Region`, `VMObject`
+
+Each process has its own address space containing memory regions:
+
+```
+Address Space
+├── Kernel Regions (shared across all processes)
+│   ├── Kernel text and data
+│   └── Kernel heap
+└── User Regions (per-process)
+    ├── Program text (.text)
+    ├── Program data (.data, .bss)
+    ├── Heap (grows upward)
+    ├── Memory mappings (mmap)
+    └── Stack (grows downward)
+```
+
+**Region Types**:
+- **Anonymous Regions**: Backed by `AnonymousVMObject` (heap, stack)
+- **Inode-backed Regions**: Backed by files via `InodeVMObject`
+- **MMIO Regions**: Memory-mapped I/O via `MMIOVMObject`
+- **Shared Framebuffer**: GPU framebuffers via `SharedFramebufferVMObject`
+
+<Info>
+Regions can be shared between processes using shared VM objects, enabling efficient IPC and memory-mapped files.
+</Info>
+
+#### Page Fault Handling
+
+**Key File**: `Kernel/Arch/PageFault.cpp`
+
+Page faults occur when accessing unmapped or protected memory:
+
+1. **Hardware triggers page fault** with faulting address
+2. **Kernel identifies the region** containing the address
+3. **VM object handles the fault**:
+   - Allocate physical page if needed
+   - Read from backing store (for file-backed pages)
+   - Apply copy-on-write if necessary
+4. **Update page tables** and resume execution
+
+### File System Layer
+
+Located in `Kernel/FileSystem/`, this implements the Virtual File System and concrete filesystems.
+
+#### Virtual File System (VFS)
+
+**Key Classes**: `VirtualFileSystem`, `Inode`, `Custody`, `Mount`
+
+The VFS provides a unified interface for all filesystems:
+
+- **Inodes**: Represent filesystem objects (files, directories, devices)
+- **Custody**: Path-based reference to an inode with parent tracking
+- **Mounts**: Filesystem instances mounted at specific points
+- **VFSRootContext**: Per-container mount tables and root directories
+
+<Accordion title="Supported Filesystems">
+  **Disk Filesystems**:
+  - Ext2FS: Linux ext2 filesystem
+  - FATFS: FAT12/16/32 filesystem
+  - ISO9660FS: CD-ROM filesystem
+  
+  **Network Filesystems**:
+  - Plan9FS: Plan 9 protocol filesystem
+  - FUSE: Userspace filesystem support
+  
+  **Pseudo Filesystems**:
+  - ProcFS: Process information (`/proc`)
+  - SysFS: Kernel information (`/sys`)
+  - DevPtsFS: Pseudo-terminals (`/dev/pts`)
+  - DevLoopFS: Loop devices (`/dev/loop`)
+  - RAMFS: In-memory filesystem
+</Accordion>
+
+#### File Descriptors
+
+**Key Classes**: `OpenFileDescription`, `File`
+
+Each open file is represented by:
+
+- **OpenFileDescription**: File state (position, flags, inode/socket/device)
+- **File Descriptor Table**: Per-process mapping of FD numbers to descriptions
+- **File Types**: Regular files, directories, devices, sockets, FIFOs
+
+### Device Driver Framework
+
+Located in `Kernel/Devices/`, this provides infrastructure for device drivers.
+
+#### Device Hierarchy
+
+```
+Device (abstract base)
+├── CharacterDevice
+│   ├── TTY devices
+│   ├── Input devices (keyboard, mouse)
+│   ├── Generic devices (null, zero, random)
+│   └── FUSE device
+└── BlockDevice
+    ├── Storage devices (NVMe, SATA, SCSI)
+    └── Loop devices
+```
+
+**Device Registration**:
+
+Devices are created using `Device::try_create_device<T>()` which:
+1. Constructs the device object
+2. Calls `after_inserting()` for registration
+3. Exposes the device in `/dev/`
+
+**Major/Minor Numbers**:
+- Major numbers identify device families (allocated in `Kernel/API/MajorNumberAllocation.h`)
+- Minor numbers identify specific devices within a family
+
+<Info>
+Device major numbers are allocated per device family with strict rules for naming and ordering to maintain consistency across the system.
+</Info>
+
+### Interrupt Management
+
+Located in `Kernel/Interrupts/`, this handles hardware interrupt delivery.
+
+#### Interrupt Handlers
+
+**Key Classes**: `GenericInterruptHandler`, `IRQHandler`, `SharedIRQHandler`
+
+- **Generic Handlers**: Base for all interrupt handlers
+- **IRQ Handlers**: Handle device interrupts
+- **Shared Handlers**: Multiple devices sharing one IRQ line
+- **Spurious Handlers**: Detect and handle spurious interrupts
+- **Unhandled Handlers**: Catch unexpected interrupts
+
+#### Architecture-Specific Controllers
+
+- **x86_64**: APIC (Advanced Programmable Interrupt Controller) and legacy PIC
+- **aarch64**: GIC (Generic Interrupt Controller)
+- **riscv64**: PLIC (Platform-Level Interrupt Controller)
+
+### Networking Stack
+
+Located in `Kernel/Net/`, implementing TCP/IP networking.
+
+**Key Components**:
+- **Socket Layer**: Abstract socket interface
+- **Protocol Implementations**: IPv4, TCP, UDP, ICMP
+- **Unix Domain Sockets**: Local IPC sockets
+- **Network Task**: Kernel thread for async network operations
+- **Routing**: IP routing table management
+
+### Locking and Synchronization
+
+Located in `Kernel/Locking/`, providing thread-safe primitives.
+
+#### Lock Types
+
+**Spinlocks**: 
+- Busy-wait locks for short critical sections
+- Used in interrupt context
+- Architecture-specific implementation
+
+**Mutexes**:
+- Sleeping locks for longer operations
+- Thread blocking on contention
+- Cannot be used in interrupt context
+
+<Note>
+**Critical Rule**: Never acquire a mutex after taking a spinlock. Spinlocks after spinlocks are okay if taken in consistent order to prevent deadlocks.
+</Note>
+
+#### Protected Containers
+
+```cpp
+// Automatically enforce locking when accessing data
+MutexProtected<HashMap<String, int>> m_map;
+SpinlockProtected<Vector<Thread*>> m_threads;
+
+// Lock is acquired automatically in the lambda
+m_map.with([&](auto& map) {
+    map.set("key", 42);
+});
+```
+
+#### Lock Ranking
+
+To prevent deadlocks, locks have ranks defined in `Kernel/Locking/LockRank.h`. Locks must be acquired in order of decreasing rank.
+
+### System Call Interface
+
+Located in `Kernel/Syscalls/`, implementing the kernel-userspace boundary.
+
+#### Syscall Handling
+
+**Key File**: `Kernel/Syscalls/SyscallHandler.cpp`
+
+1. **Userspace** invokes syscall via architecture-specific instruction
+2. **CPU** switches to kernel mode
+3. **Handler** validates arguments and permissions
+4. **Implementation** performs the requested operation
+5. **Return** back to userspace with result or error
+
+#### Design Principles
+
+- Follow POSIX standards where applicable
+- Avoid architecture-specific syscalls
+- Prefer existing interfaces over new syscalls
+- No hardcoded paths in syscall implementations
+
+<Accordion title="Common System Calls">
+  **File Operations**: `open`, `read`, `write`, `close`, `ioctl`, `fcntl`
+  
+  **Process Management**: `fork`, `execve`, `exit`, `wait`, `kill`
+  
+  **Memory**: `mmap`, `munmap`, `mprotect`, `brk`
+  
+  **Signals**: `sigaction`, `sigprocmask`, `kill`
+  
+  **Networking**: `socket`, `bind`, `connect`, `send`, `recv`
+  
+  **Time**: `clock_gettime`, `nanosleep`, `alarm`
+</Accordion>
+
+## Bus Support
+
+Located in `Kernel/Bus/`, supporting various hardware buses.
+
+### PCI (Peripheral Component Interconnect)
+
+- Device enumeration and configuration
+- MSI (Message Signaled Interrupts) support
+- Memory-mapped configuration access
+- Volume Management Device support
+
+### USB (Universal Serial Bus)
+
+- **Controllers**: UHCI, EHCI, xHCI
+- **Device Management**: USB hub support, device enumeration
+- **Drivers**: HID (keyboard/mouse), Mass Storage
+- **Transfers**: Control, bulk, interrupt, isochronous
+
+### VirtIO
+
+Para-virtualized device support for:
+- Network devices
+- Block devices  
+- GPU devices
+- Input devices
+
+## Firmware Interfaces
+
+Located in `Kernel/Firmware/`.
+
+### ACPI (Advanced Configuration and Power Interface)
+
+**Platforms**: x86_64
+
+Provides:
+- Hardware discovery
+- Power management
+- Interrupt routing
+- Thermal management
+
+### Device Tree
+
+**Platforms**: aarch64, riscv64
+
+Provides:
+- Hardware description from bootloader
+- Device enumeration
+- Platform-specific initialization
+- Driver matching based on compatible strings
+
+<Info>
+The kernel can parse both flattened device trees (FDT) from bootloaders and unflatten them into a tree structure for driver probing.
+</Info>
+
+## SMP (Symmetric Multi-Processing)
+
+The kernel fully supports multi-core systems:
+
+- **Per-CPU Data**: `Processor` class represents each CPU
+- **Scheduler**: Per-CPU run queues with load balancing
+- **Interrupts**: IRQ affinity and per-CPU interrupt handling
+- **Locking**: Proper synchronization for shared data structures
+- **Memory**: TLB shootdown for page table updates
+
+## Security Architecture
+
+### Credential System
+
+Processes carry credentials for access control:
+- User ID (UID) and Group ID (GID)
+- Effective, real, and saved UIDs/GIDs
+- Supplementary groups
+- Capabilities (work in progress)
+
+### Sandboxing
+
+- **Pledge**: System call filtering
+- **Unveil**: Filesystem access restrictions
+- **Containers**: Process isolation with VFS roots, process lists, hostnames
+- **Jails**: Permanent isolation until process exit
+
+### Randomization
+
+Located in `Kernel/Security/`:
+- Stack canaries (`__stack_chk_guard`)
+- Address space layout randomization (ASLR)
+- Kernel fast random number generation
+
+## Debugging Support
+
+- **Kernel Symbols**: Symbol table loaded at boot from `KSyms.cpp`
+- **Debug Output**: `dbgln()` for kernel debugging messages
+- **Coredumps**: Generated for crashed processes
+- **Performance Events**: Kernel profiling support
+- **KCOV**: Code coverage for fuzzing
+
+## Next Steps
+
+- Explore specific subsystems in detail
+- Study the [Development Guidelines](https://github.com/SerenityOS/serenity/blob/master/Documentation/Kernel/DevelopmentGuidelines.md)
+- Learn about [Locking Patterns](https://github.com/SerenityOS/serenity/blob/master/Documentation/Kernel/AHCILocking.md)
+- Understand container support in depth

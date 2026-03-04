@@ -1,0 +1,140 @@
+---
+title: Build System Overview
+description: Overview of the SerenityOS build system and architecture
+---
+
+SerenityOS uses a SuperBuild pattern with CMake to manage the compilation of both host tools and the target operating system. The build system supports multiple architectures and toolchains.
+
+## Build Architecture
+
+<Info>
+The SuperBuild separates the host build of core Serenity libraries from the target build of the entire operating system environment.
+</Info>
+
+Serenity uses host tools written in idiomatic Serenity C++ to generate code and data for the main target build. This approach allows clear separation of the host and target builds and unifies the approach towards different compiler toolchains and architectures.
+
+## Supported Architectures
+
+SerenityOS can be built for the following architectures:
+
+- **x86_64** - 64-bit Intel/AMD (default on x86_64 hosts)
+- **aarch64** - 64-bit ARM
+- **riscv64** - 64-bit RISC-V
+
+The chosen architecture defaults to your host architecture.
+
+## Quick Start
+
+The simplest way to build and run SerenityOS:
+
+```bash
+Meta/serenity.sh run
+```
+
+This will:
+1. Download required database files from the internet
+2. Build the SerenityOS cross-compiler toolchain (first time only)
+3. Compile all of SerenityOS
+4. Install built files into `Build/<architecture>/Root`
+5. Build a disk image
+6. Start SerenityOS using QEMU
+
+<Note>
+The first build will take significantly longer as it builds the toolchain. Subsequent builds will be much faster.
+</Note>
+
+## Build Commands
+
+The `serenity.sh` script provides several commands:
+
+<CodeGroup>
+```bash Build and run
+Meta/serenity.sh run
+```
+
+```bash Build only
+Meta/serenity.sh build
+```
+
+```bash Clean build
+Meta/serenity.sh rebuild
+```
+
+```bash Run without building
+Meta/serenity.sh run-image
+```
+</CodeGroup>
+
+Run the script without arguments for a complete list of commands.
+
+## Architecture Selection
+
+To build for a specific architecture, use the `SERENITY_ARCH` environment variable:
+
+```bash
+SERENITY_ARCH=aarch64 Meta/serenity.sh run
+```
+
+## Default Credentials
+
+<Warning>
+The default `anon` user can become `root` without a password as a development convenience.
+</Warning>
+
+- **Username**: anon
+- **Password**: foo
+
+To prevent passwordless root access, remove `anon` from the `wheel` group.
+
+## Compiler Requirements
+
+A host compiler that supports C++26 features is required:
+
+- **GCC 14** or newer
+- **Clang 17-19** (tested versions)
+
+## Build Output
+
+Compiled files are installed to:
+```
+Build/<architecture>/Root/
+```
+
+The disk image and kernel are located at:
+```
+Build/<architecture>/_disk_image
+Build/<architecture>/Kernel/Kernel
+```
+
+## SuperBuild Configuration
+
+The recommended `Meta/serenity.sh run` invokes the SuperBuild equivalently to:
+
+```bash
+cmake -GNinja -S Meta/CMake/Superbuild -B Build/superbuild-x86_64 \
+  -DSERENITY_ARCH=x86_64 -DSERENITY_TOOLCHAIN=GNU
+cmake --build Build/superbuild-x86_64
+ninja -C Build/x86_64 setup-and-run
+```
+
+The SuperBuild configures two projects:
+
+1. **Lagom** - Host build for code generators and tools
+2. **Serenity** - Main OS build for the target architecture
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Linux Build" icon="linux" href="/building/linux">
+    Build instructions for Debian, Ubuntu, Arch, and more
+  </Card>
+  <Card title="macOS Build" icon="apple" href="/building/macos">
+    Build instructions for macOS with Homebrew
+  </Card>
+  <Card title="Windows Build" icon="windows" href="/building/windows">
+    Build instructions for WSL2 on Windows
+  </Card>
+  <Card title="Advanced Options" icon="gear" href="/building/advanced">
+    CMake options, sanitizers, and customization
+  </Card>
+</CardGroup>

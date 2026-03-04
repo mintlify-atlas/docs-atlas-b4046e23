@@ -1,0 +1,585 @@
+---
+title: 'LibCore'
+description: 'Core utilities library providing event loops, I/O, timers, and system abstractions'
+icon: 'gear'
+---
+
+## Overview
+
+LibCore is SerenityOS's core utilities library built on top of AK. It provides essential abstractions for event-driven programming, file I/O, process management, timers, and system integration. LibCore is the foundation for both GUI applications (via LibGUI) and command-line utilities.
+
+<Info>
+LibCore provides cross-platform abstractions with platform-specific implementations for SerenityOS, Linux, and macOS.
+</Info>
+
+## Event Loop
+
+### EventLoop
+
+Core event loop for asynchronous programming.
+
+```cpp
+#include <LibCore/EventLoop.h>
+
+int main(int argc, char** argv) {
+    Core::EventLoop event_loop;
+    
+    // Schedule deferred work
+    event_loop.deferred_invoke([]() {
+        dbgln("This runs on next event loop iteration");
+    });
+    
+    // Run the event loop
+    return event_loop.exec();
+}
+```
+
+<Accordion title="Event Loop Features">
+- **Deferred invocations**: Run callbacks asynchronously
+- **Timers**: Periodic or one-shot timer events
+- **Filesystem notifications**: Watch for file changes
+- **POSIX signals**: Handle signals in event loop
+- **Coroutine support**: Async/await style programming
+- **Nested event loops**: Support for modal dialogs
+</Accordion>
+
+**Key Methods:**
+
+<ParamField path="exec" type="int()">
+  Pump the event loop until exit is requested. Returns exit code.
+</ParamField>
+
+<ParamField path="pump" type="size_t(WaitMode)">
+  Process events once. Returns number of events processed.
+</ParamField>
+
+<ParamField path="quit" type="void(int)">
+  Request event loop exit with given exit code.
+</ParamField>
+
+<ParamField path="deferred_invoke" type="void(Function<void()>)">
+  Schedule callback to run on next event loop iteration.
+</ParamField>
+
+<ParamField path="spin_until" type="void(Function<bool()>)">
+  Pump event loop until condition becomes true.
+</ParamField>
+
+```cpp
+// Spin until condition met
+bool ready = false;
+event_loop.spin_until([&] { return ready; });
+
+// Quit event loop
+event_loop.quit(0);
+```
+
+### EventReceiver
+
+Base class for objects that receive events.
+
+```cpp
+#include <LibCore/EventReceiver.h>
+#include <LibCore/Event.h>
+
+class MyObject : public Core::EventReceiver {
+    C_OBJECT(MyObject)
+public:
+    virtual void timer_event(Core::TimerEvent& event) override {
+        dbgln("Timer fired!");
+    }
+    
+    virtual void custom_event(Core::CustomEvent& event) override {
+        dbgln("Custom event: {}", event.custom_type());
+    }
+    
+private:
+    MyObject() = default;
+};
+```
+
+## File I/O
+
+### File
+
+Modern file I/O using streams.
+
+```cpp
+#include <LibCore/File.h>
+
+// Open file for reading
+auto file = TRY(Core::File::open("/path/to/file"sv, Core::File::OpenMode::Read));
+
+// Read entire file
+auto contents = TRY(file->read_until_eof());
+
+// Read some bytes
+u8 buffer[1024];
+auto bytes = TRY(file->read_some(buffer));
+
+// Open for writing
+auto out = TRY(Core::File::open("/tmp/output"sv, 
+    Core::File::OpenMode::Write | Core::File::OpenMode::Truncate));
+TRY(out->write_until_depleted("Hello, World!"sv.bytes()));
+```
+
+<CodeGroup>
+```cpp Reading Files
+// Read entire file as string
+auto file = TRY(Core::File::open("/etc/passwd"sv, Core::File::OpenMode::Read));
+auto buffer = TRY(file->read_until_eof());
+auto content = String::from_utf8_without_validation(buffer);
+```
+
+```cpp Writing Files
+// Write data to file
+auto file = TRY(Core::File::open("/tmp/log.txt"sv,
+    Core::File::OpenMode::Write | Core::File::OpenMode::Append));
+
+auto line = MUST(String::formatted("Log entry at {}\n", time(nullptr)));
+TRY(file->write_until_depleted(line.bytes()));
+```
+
+```cpp Standard Streams
+// Use stdin/stdout/stderr
+auto in = TRY(Core::File::standard_input());
+auto out = TRY(Core::File::standard_output());
+auto err = TRY(Core::File::standard_error());
+
+// Read from stdin
+u8 buffer[256];
+auto bytes = TRY(in->read_some(buffer));
+
+// Write to stdout
+TRY(out->write_until_depleted("Hello!\n"sv.bytes()));
+```
+</CodeGroup>
+
+**Open Modes:**
+
+<ParamField path="Read" type="OpenMode">
+  Open for reading
+</ParamField>
+
+<ParamField path="Write" type="OpenMode">
+  Open for writing
+</ParamField>
+
+<ParamField path="ReadWrite" type="OpenMode">
+  Open for reading and writing
+</ParamField>
+
+<ParamField path="Append" type="OpenMode">
+  Append to end of file
+</ParamField>
+
+<ParamField path="Truncate" type="OpenMode">
+  Truncate file to zero length
+</ParamField>
+
+<ParamField path="MustBeNew" type="OpenMode">
+  Fail if file already exists
+</ParamField>
+
+### Directory & DirIterator
+
+Directory operations and iteration.
+
+```cpp
+#include <LibCore/Directory.h>
+#include <LibCore/DirIterator.h>
+
+// Create directory
+TRY(Core::Directory::create("/tmp/mydir"sv, 0755));
+
+// Iterate directory entries
+Core::DirIterator iterator("/tmp"sv, Core::DirIterator::SkipDots);
+while (iterator.has_next()) {
+    auto entry = iterator.next();
+    dbgln("{}: {}", entry->name, entry->type);
+}
+
+// Check if directory exists
+if (Core::Directory::exists("/etc"sv)) {
+    // Directory exists
+}
+```
+
+### MappedFile
+
+Memory-mapped file I/O for efficient access.
+
+```cpp
+#include <LibCore/MappedFile.h>
+
+// Map file into memory
+auto mapped = TRY(Core::MappedFile::map("/path/to/large/file"sv));
+
+// Access as bytes
+ReadonlyBytes bytes = mapped->bytes();
+
+// File is automatically unmapped on destruction
+```
+
+## Timers
+
+### Timer
+
+Schedule periodic or one-shot timer events.
+
+```cpp
+#include <LibCore/Timer.h>
+
+// Create repeating timer
+auto timer = Core::Timer::create_repeating(1000, []() {
+    dbgln("Tick every second");
+});
+timer->start();
+
+// Create one-shot timer
+auto delayed = Core::Timer::create_single_shot(5000, []() {
+    dbgln("Fired after 5 seconds");
+});
+delayed->start();
+
+// Manual timer control
+auto timer = Core::Timer::create();
+timer->set_interval(500); // 500ms
+timer->set_single_shot(false); // Repeating
+timer->on_timeout = []() { dbgln("Timeout!"); };
+timer->start();
+
+// Stop timer
+timer->stop();
+```
+
+<ParamField path="interval" type="int">
+  Timer interval in milliseconds
+</ParamField>
+
+<ParamField path="single_shot" type="bool">
+  If true, timer fires once then stops. If false, repeats indefinitely.
+</ParamField>
+
+<ParamField path="on_timeout" type="Function<void()>">
+  Callback invoked when timer fires
+</ParamField>
+
+## Process Management
+
+### Process
+
+Spawn and manage child processes.
+
+```cpp
+#include <LibCore/Process.h>
+
+// Spawn process
+auto result = TRY(Core::Process::spawn("/bin/ls"sv, 
+    Array { "ls"sv, "-la"sv }));
+dbgln("Spawned PID: {}", result.pid);
+
+// Run and wait for completion
+auto output = TRY(Core::Process::run(
+    Array { "/bin/echo"sv, "Hello"sv }));
+dbgln("Exit code: {}", output.exit_code);
+dbgln("Output: {}", String::from_utf8(output.standard_output));
+
+// Spawn with custom environment
+HashMap<String, String> env;
+env.set("MY_VAR"_string, "value"_string);
+auto result = TRY(Core::Process::spawn("/bin/prog"sv, 
+    Array { "prog"sv }, env));
+```
+
+<CodeGroup>
+```cpp Spawn Process
+// Spawn without waiting
+auto result = TRY(Core::Process::spawn(
+    "/usr/bin/myapp"sv,
+    Array { "myapp"sv, "--option"sv, "value"sv }
+));
+
+dbgln("Process PID: {}", result.pid);
+// Process continues running
+```
+
+```cpp Run and Capture Output
+// Run and capture stdout/stderr
+auto output = TRY(Core::Process::run(
+    Array { "/bin/uname"sv, "-a"sv }
+));
+
+if (output.exit_code == 0) {
+    auto stdout_str = TRY(String::from_utf8(output.standard_output));
+    dbgln("Output: {}", stdout_str);
+}
+```
+</CodeGroup>
+
+## Network I/O
+
+### Socket
+
+TCP/UDP socket abstraction.
+
+```cpp
+#include <LibCore/Socket.h>
+
+// Connect to server
+auto socket = TRY(Core::Socket::connect("example.com"sv, 80));
+
+// Send data
+TRY(socket->write_until_depleted("GET / HTTP/1.0\r\n\r\n"sv.bytes()));
+
+// Read response
+auto response = TRY(socket->read_until_eof());
+
+// Socket automatically closes on destruction
+```
+
+### TCPServer & UDPServer
+
+Server socket implementations.
+
+```cpp
+#include <LibCore/TCPServer.h>
+
+auto server = TRY(Core::TCPServer::try_create());
+TRY(server->listen({ 127, 0, 0, 1 }, 8080));
+
+server->on_ready_to_accept = [&]() {
+    auto client = server->accept();
+    if (client) {
+        dbgln("Client connected");
+        // Handle client...
+    }
+};
+```
+
+## Configuration
+
+### ConfigFile
+
+INI-style configuration file handling.
+
+```cpp
+#include <LibCore/ConfigFile.h>
+
+// Open config file
+auto config = TRY(Core::ConfigFile::open("/etc/myapp.conf"sv));
+
+// Read values
+auto value = config->read_entry("Section"sv, "key"sv, "default"sv);
+auto number = config->read_num_entry("Section"sv, "count"sv, 0);
+auto flag = config->read_bool_entry("Section"sv, "enabled"sv, false);
+
+// Write values
+config->write_entry("Section"sv, "key"sv, "new_value"sv);
+config->write_num_entry("Section"sv, "count"sv, 42);
+config->write_bool_entry("Section"sv, "enabled"sv, true);
+
+// Save changes
+TRY(config->sync());
+```
+
+### Environment
+
+Environment variable access.
+
+```cpp
+#include <LibCore/Environment.h>
+
+// Get variable
+if (auto path = Core::Environment::get("PATH"sv)) {
+    dbgln("PATH: {}", *path);
+}
+
+// Set variable
+TRY(Core::Environment::set("MY_VAR"sv, "value"sv, true)); // true = overwrite
+
+// Unset variable
+TRY(Core::Environment::unset("MY_VAR"sv));
+```
+
+## System Utilities
+
+### DateTime
+
+Date and time handling.
+
+```cpp
+#include <LibCore/DateTime.h>
+
+// Current time
+auto now = Core::DateTime::now();
+dbgln("Current time: {}", now.to_string());
+
+// From timestamp
+auto dt = Core::DateTime::from_timestamp(1234567890);
+
+// Formatting
+auto formatted = now.to_string("%Y-%m-%d %H:%M:%S"sv);
+
+// Components
+int year = now.year();
+int month = now.month();
+int day = now.day();
+int hour = now.hour();
+```
+
+### ArgsParser
+
+Command-line argument parsing.
+
+```cpp
+#include <LibCore/ArgsParser.h>
+
+int main(int argc, char** argv) {
+    Core::ArgsParser parser;
+    
+    String filename;
+    bool verbose = false;
+    int count = 1;
+    
+    parser.add_positional_argument(filename, "Input file", "FILE");
+    parser.add_option(verbose, "Verbose output", "verbose", 'v');
+    parser.add_option(count, "Repetition count", "count", 'n', "NUM");
+    
+    parser.parse(argc, argv);
+    
+    dbgln("File: {}", filename);
+    dbgln("Verbose: {}", verbose);
+    dbgln("Count: {}", count);
+    
+    return 0;
+}
+```
+
+<Accordion title="ArgsParser Features">
+- Positional arguments
+- Boolean flags (--flag, -f)
+- Value options (--option=value, -o value)
+- Automatic --help generation
+- Required vs optional arguments
+- Type-safe parsing
+</Accordion>
+
+### ElapsedTimer
+
+High-resolution timing.
+
+```cpp
+#include <LibCore/ElapsedTimer.h>
+
+Core::ElapsedTimer timer;
+timer.start();
+
+// Do some work...
+
+auto elapsed_ms = timer.elapsed();
+dbgln("Operation took {}ms", elapsed_ms);
+```
+
+### System
+
+System information and utilities.
+
+```cpp
+#include <LibCore/System.h>
+
+// Get system info
+auto hostname = TRY(Core::System::gethostname());
+auto username = TRY(Core::System::getlogin());
+
+// Change directory
+TRY(Core::System::chdir("/tmp"sv));
+
+// Sleep
+Core::System::sleep(1); // 1 second
+Core::System::usleep(1000); // 1000 microseconds
+```
+
+## Promises & Async
+
+### Promise
+
+Asynchronous operation results.
+
+```cpp
+#include <LibCore/Promise.h>
+
+NonnullRefPtr<Core::Promise<String>> async_read_file(String path) {
+    auto promise = Core::Promise<String>::construct();
+    
+    // Schedule async work
+    Core::EventLoop::current().deferred_invoke([promise, path = move(path)]() {
+        auto result = Core::File::open(path, Core::File::OpenMode::Read);
+        if (result.is_error()) {
+            promise->reject(result.error());
+        } else {
+            auto content = result.value()->read_until_eof();
+            if (content.is_error()) {
+                promise->reject(content.error());
+            } else {
+                promise->resolve(String::from_utf8_without_validation(content.value()));
+            }
+        }
+    });
+    
+    return promise;
+}
+```
+
+## File Watching
+
+### FileWatcher
+
+Monitor file system changes.
+
+```cpp
+#include <LibCore/FileWatcher.h>
+
+auto watcher = TRY(Core::FileWatcher::create());
+TRY(watcher->add_watch("/path/to/watch"sv, 
+    Core::FileWatcherEvent::Type::Modified));
+
+watcher->on_change = [](auto& event) {
+    dbgln("File changed: {}", event.path);
+};
+```
+
+## Best Practices
+
+<Accordion title="Event Loop Usage">
+- Create one EventLoop per thread
+- Use `deferred_invoke` for async callbacks
+- Don't block the event loop with long operations
+- Use timers for periodic work
+</Accordion>
+
+<Accordion title="Error Handling">
+```cpp
+// Always use TRY for operations that return ErrorOr
+auto file = TRY(Core::File::open(path, Core::File::OpenMode::Read));
+
+// Or handle errors explicitly
+if (auto result = Core::File::open(path, mode); result.is_error()) {
+    warnln("Failed to open: {}", result.error());
+    return 1;
+}
+```
+</Accordion>
+
+<Accordion title="Resource Management">
+- Use RAII: Resources automatically cleaned up
+- Files close on destruction
+- Timers stop on destruction
+- Sockets disconnect on destruction
+</Accordion>
+
+## Related APIs
+
+- [AK](/api/ak) - Foundation data structures
+- [LibGUI](/api/libgui) - GUI toolkit built on LibCore
+- [LibIPC](/architecture/ipc) - Inter-process communication

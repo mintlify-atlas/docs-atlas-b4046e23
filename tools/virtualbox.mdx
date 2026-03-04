@@ -1,0 +1,173 @@
+---
+title: Running in VirtualBox
+description: Installation guide for running SerenityOS in VirtualBox
+---
+
+<Warning>
+There are currently known issues with running Serenity in VirtualBox. Please refer to the [open issue](https://github.com/SerenityOS/serenity/issues/2927) for a list of currently known problems. At the time of writing, audio and networking do not work in VirtualBox.
+</Warning>
+
+## Creating the Disk Image
+
+Before creating a disk image for VirtualBox, you need to create a GRUB image as described in the [bare metal installation guide](/tools/bare-metal).
+
+<Info>
+Skip the final step of the bare metal guide (writing to physical drive) as that's only relevant for real hardware.
+</Info>
+
+<Warning>
+You **cannot** use the same disk image created for QEMU. Using that image will halt immediately with the message `FATAL: No bootable medium found! System halted.`
+</Warning>
+
+### Converting the Image
+
+There are two ways to convert the GRUB disk image to VirtualBox format:
+
+#### Using QEMU (if installed)
+
+```bash
+qemu-img convert -O vdi /path/to/grub_disk_image /path/to/output/serenityos.vdi
+```
+
+#### Using VirtualBox Only
+
+```bash
+VBoxManage convertfromraw --format VDI /path/to/grub_disk_image /path/to/output/serenityos.vdi
+```
+
+### Set Disk Identifier
+
+Set an identifier to prevent mismatches when updating the disk image:
+
+```bash
+VBoxManage internalcommands sethduuid serenityos.vdi 19850209-0000-0000-0000-000000000000
+```
+
+<Note>
+On Windows, if QEMU or VirtualBox are not in your PATH, navigate to their installation folder and prefix commands with `./`
+</Note>
+
+## Creating the Virtual Machine
+
+<Info>
+These instructions were written with VirtualBox v6.1.12 in mind. Steps may vary slightly for other versions.
+</Info>
+
+<Steps>
+  <Step title="Open Create Virtual Machine dialog">
+    Open the **Create Virtual Machine** dialog and switch to **Expert Mode**.
+  </Step>
+  
+  <Step title="Configure basic settings">
+    - Give it any name and storage location
+    - Set **Type** to **Other**
+    - Set **Version** to **Other/Unknown (64-bit)**
+  </Step>
+  
+  <Step title="Set memory size">
+    Serenity requires at minimum 512 MiB of memory. The currently recommended size is 1 GiB (1024 MiB).
+  </Step>
+  
+  <Step title="Add existing disk">
+    For **Hard disk**:
+    1. Select **Use an existing virtual hard disk file**
+    2. Click the folder icon to open the **Hard Disk Selector**
+    3. Click **Add** and browse to your converted VDI image
+    4. Click **Choose**
+  </Step>
+  
+  <Step title="Create the VM">
+    Click **Create** to finalize the virtual machine.
+  </Step>
+</Steps>
+
+## Configuring the Virtual Machine
+
+Serenity requires specific configuration changes to boot properly.
+
+### Required Settings
+
+<Steps>
+  <Step title="Enable PAE/NX">
+    1. Open **Settings**
+    2. Go to **System** > **Processor** tab
+    3. Tick **Enable PAE/NX**
+  </Step>
+  
+  <Step title="Configure audio">
+    1. Go to **Audio**
+    2. Set **Audio Controller** to **SoundBlaster 16**
+    
+    <Note>Audio does not currently work in VirtualBox.</Note>
+  </Step>
+</Steps>
+
+### Verify Settings
+
+Check these settings to ensure compatibility:
+
+#### Storage Controller
+
+1. In **Storage**, click on the **Controller**
+2. Verify the controller type is **AHCI (SATA)** or **NVMe**
+
+<Warning>
+Any other controller type is guaranteed not to work, as Serenity does not currently support them.
+</Warning>
+
+#### Network Adapter
+
+1. Go to **Network** > **Advanced** dropdown
+2. Verify **Adapter Type** is **NOT** set to **Intel PRO/1000 MT Desktop (82540EM)**
+
+<Note>
+While the Intel PRO/1000 MT Desktop (82540EM) is the only adapter type Serenity currently supports, it does not currently work in VirtualBox. Networking does not work at this time.
+</Note>
+
+## Troubleshooting
+
+### Blinking Cursor After GRUB Menu
+
+If you only see a blinking cursor after selecting an option in the GRUB menu:
+
+<Steps>
+  <Step title="Check PAE/NX is enabled">
+    Verify that you have enabled PAE/NX in **Settings** > **System** > **Processor** tab.
+  </Step>
+  
+  <Step title="Verify 64-bit configuration (if using 64-bit)">
+    If using a 64-bit disk image, check that **Version** is set to **Other/Unknown (64-bit)** instead of **Other/Unknown** in **Settings** > **General**.
+  </Step>
+</Steps>
+
+For more boot issues, see the [troubleshooting documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/Troubleshooting.md).
+
+## Optional Configuration
+
+### Serial Debugging
+
+To enable serial debugging:
+
+<Steps>
+  <Step title="Enable serial port">
+    1. Go to **Serial Ports**
+    2. Enable port 1
+  </Step>
+  
+  <Step title="Configure port mode">
+    Set **Port Mode** to **Raw File** (recommended) or another mode if you know what you're doing.
+  </Step>
+  
+  <Step title="Set output path">
+    Set **Path/Address** to where you want to store the serial output file. This must include the filename.
+  </Step>
+</Steps>
+
+### Video Memory for High Resolutions
+
+The default 16 MB of video memory is sufficient for default resolution, but not for all supported resolutions:
+
+- **Default resolution**: 16 MB (default)
+- **2560x1080 resolution**: Minimum 22 MB required
+
+Adjust video memory in **Settings** > **Display** > **Video Memory** if needed.

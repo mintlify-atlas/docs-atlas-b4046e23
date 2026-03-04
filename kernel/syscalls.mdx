@@ -1,0 +1,532 @@
+---
+title: System Call Interface
+description: System call mechanism, syscall handling, and kernel-userspace interface in SerenityOS
+---
+
+System calls (syscalls) are the primary mechanism for user space programs to request services from the kernel. The SerenityOS kernel provides a comprehensive syscall interface defined in `Kernel/API/Syscall.h` and implemented across `Kernel/Syscalls/`.
+
+## System Call Architecture
+
+### Overview
+
+System calls transition execution from user mode to kernel mode, allowing controlled access to privileged operations:
+
+```
+User Space                    Kernel Space
+   │                              │
+   │  syscall instruction         │
+   ├─────────────────────────────>│
+   │                              │ Syscall Handler
+   │                              │ Validate Parameters
+   │                              │ Execute Operation
+   │                              │
+   │<─────────────────────────────┤
+   │  return value                │
+```
+
+### Syscall Numbers
+
+Each system call has a unique number defined by the `ENUMERATE_SYSCALLS` macro:
+
+```cpp
+enum Function {
+    SC_accept4,
+    SC_alarm,
+    SC_read,
+    SC_write,
+    SC_open,
+    // ... ~150 total syscalls
+    __Count
+};
+```
+
+## Making System Calls
+
+### From User Space
+
+Applications invoke syscalls using architecture-specific instructions:
+
+**x86_64**:
+```cpp
+uintptr_t invoke(Function function, T1 arg1, T2 arg2, T3 arg3) {
+    uintptr_t result;
+    asm volatile("syscall"
+        : "=a"(result)
+        : "a"(function), "d"(arg1), "D"(arg2), "b"(arg3)
+        : "rcx", "r11", "memory");
+    return result;
+}
+```
+
+**AArch64**:
+```cpp
+asm volatile("svc #0"  // Supervisor call
+    : "=r"(x0)
+    : "r"(x1), "r"(x2), "r"(x3), "r"(x8)
+    : "memory");
+```
+
+**RISC-V**:
+```cpp
+asm volatile("ecall"   // Environment call
+    : "=r"(result)
+    : "0"(a0), "r"(a1), "r"(a2), "r"(a7)
+    : "memory");
+```
+
+<Info>
+User space code typically doesn't invoke syscalls directly. Instead, it uses LibC wrapper functions that handle marshalling arguments and error codes.
+</Info>
+
+### Syscall Parameters
+
+System calls can accept up to 4 parameters. Complex data structures are passed via parameter structures:
+
+```cpp
+struct SC_open_params {
+    int dirfd;
+    StringArgument path;
+    int options;
+    u16 mode;
+};
+
+struct SC_mmap_params {
+    void* addr;
+    size_t size;
+    size_t alignment;
+    int32_t prot;
+    int32_t flags;
+    int32_t fd;
+    int64_t offset;
+    StringArgument name;
+};
+```
+
+## Kernel-Side Handling
+
+### Syscall Handler
+
+The main syscall entry point is in `Kernel/Syscalls/SyscallHandler.cpp`:
+
+```cpp
+ErrorOr<FlatPtr> handle(
+    RegisterState& regs,
+    FlatPtr function,
+    FlatPtr arg1,
+    FlatPtr arg2,
+    FlatPtr arg3,
+    FlatPtr arg4
+)
+{
+    auto* current_thread = Thread::current();
+    auto& process = current_thread->process();
+    
+    // Validate syscall number
+    if (function >= Function::__Count)
+        return ENOSYS;
+    
+    // Get handler metadata
+    auto const syscall_metadata = s_syscall_table[function];
+    
+    // Acquire big process lock if needed
+    auto const needs_big_lock = 
+        syscall_metadata.needs_lock == NeedsBigProcessLock::Yes;
+    
+    // Dispatch to handler
+    return (process.*syscall_metadata.handler)(arg1, arg2, arg3, arg4);
+}
+```
+
+### Handler Table
+
+Syscalls are dispatched via a function pointer table:
+
+```cpp
+struct HandlerMetadata {
+    Handler handler;                // Function pointer
+    NeedsBigProcessLock needs_lock; // Lock requirement
+};
+
+static HandlerMetadata const s_syscall_table[] = {
+    { &Process::sys$accept4, NeedsBigProcessLock::No },
+    { &Process::sys$read, NeedsBigProcessLock::Yes },
+    { &Process::sys$write, NeedsBigProcessLock::Yes },
+    // ...
+};
+```
+
+### Big Process Lock
+
+Some syscalls require the "big process lock" for thread-safety:
+
+```cpp
+enum class NeedsBigProcessLock {
+    Yes,  // Syscall needs process-wide lock
+    No    // Syscall is lock-free or uses fine-grained locking
+};
+```
+
+<Warning>
+Syscall implementations must document their locking requirements using:
+- `VERIFY_PROCESS_BIG_LOCK_ACQUIRED(this)` - Lock is held
+- `VERIFY_NO_PROCESS_BIG_LOCK(this)` - Lock is NOT held
+</Warning>
+
+## Common Syscalls
+
+### Process Management
+
+**fork** - Create child process
+```cpp
+ErrorOr<FlatPtr> Process::sys$fork()
+{
+    // Copy process with COW
+    auto child = TRY(Process::create_from_parent(*this));
+    return child->pid().value();
+}
+```
+
+**execve** - Execute program
+```cpp
+ErrorOr<FlatPtr> Process::sys$execve(Userspace<SC_execve_params const*> user_params)
+{
+    // Load and execute new program
+    auto params = TRY(copy_typed_from_user(user_params));
+    return do_exec(params.path, params.arguments, params.environment);
+}
+```
+
+**exit** - Terminate process
+```cpp
+ErrorOr<FlatPtr> Process::sys$exit(int status)
+{
+    // Never returns
+    thread->set_return_value(status);
+    thread->die();
+    VERIFY_NOT_REACHED();
+}
+```
+
+### File Operations
+
+**open** - Open file
+```cpp
+ErrorOr<FlatPtr> Process::sys$open(Userspace<SC_open_params const*> user_params)
+{
+    auto params = TRY(copy_typed_from_user(user_params));
+    auto path = TRY(get_syscall_path_argument(params.path));
+    
+    auto fd_index = TRY(m_fds.with([&](auto& fds) {
+        return fds.allocate();
+    }));
+    
+    auto description = TRY(VirtualFileSystem::the().open(
+        path->view(),
+        params.options,
+        params.mode & ~umask()
+    ));
+    
+    fds[fd_index.fd].set(move(description));
+    return fd_index.fd;
+}
+```
+
+**read** - Read from file
+```cpp
+ErrorOr<FlatPtr> Process::sys$read(int fd, Userspace<u8*> buffer, size_t size)
+{
+    VERIFY_PROCESS_BIG_LOCK_ACQUIRED(this);
+    
+    auto description = TRY(open_file_description(fd));
+    auto bytes_read = TRY(description->read(buffer, size));
+    return bytes_read;
+}
+```
+
+**write** - Write to file
+```cpp
+ErrorOr<FlatPtr> Process::sys$write(int fd, Userspace<u8 const*> data, size_t size)
+{
+    VERIFY_PROCESS_BIG_LOCK_ACQUIRED(this);
+    
+    auto description = TRY(open_file_description(fd));
+    auto bytes_written = TRY(description->write(data, size));
+    return bytes_written;
+}
+```
+
+### Memory Management
+
+**mmap** - Map memory
+```cpp
+ErrorOr<FlatPtr> Process::sys$mmap(Userspace<SC_mmap_params const*> user_params)
+{
+    auto params = TRY(copy_typed_from_user(user_params));
+    
+    auto* region = TRY(address_space().allocate_region(
+        RandomizeVirtualAddress::Yes,
+        VirtualAddress(params.addr),
+        params.size,
+        params.alignment,
+        name,
+        params.prot,
+        AllocationStrategy::Reserve
+    ));
+    
+    return region->vaddr().get();
+}
+```
+
+**munmap** - Unmap memory
+```cpp
+ErrorOr<FlatPtr> Process::sys$munmap(Userspace<void*> addr, size_t size)
+{
+    TRY(address_space().unmap_mmap_range(
+        VirtualAddress(addr),
+        size
+    ));
+    return 0;
+}
+```
+
+### Thread Management
+
+**create_thread** - Create new thread
+```cpp
+ErrorOr<FlatPtr> Process::sys$create_thread(
+    Userspace<SC_create_thread_params const*> user_params
+)
+{
+    auto params = TRY(copy_typed_from_user(user_params));
+    
+    auto thread = TRY(Thread::create(*this));
+    thread->set_priority(params.schedule_priority);
+    
+    // Setup stack and TLS
+    TRY(thread->setup_stack(params));
+    
+    // Start thread
+    thread->start();
+    
+    return thread->tid().value();
+}
+```
+
+### IPC and Sockets
+
+**socket** - Create socket
+```cpp
+ErrorOr<FlatPtr> Process::sys$socket(int domain, int type, int protocol)
+{
+    auto socket = TRY(Socket::create(domain, type, protocol));
+    auto fd = TRY(allocate_fd());
+    m_fds[fd].set(move(socket));
+    return fd;
+}
+```
+
+**sendmsg/recvmsg** - Send/receive messages
+```cpp
+ErrorOr<FlatPtr> Process::sys$sendmsg(int sockfd, 
+    Userspace<msghdr const*> msg, int flags)
+{
+    auto description = TRY(open_file_description(sockfd));
+    auto& socket = *description->socket();
+    return TRY(socket.sendmsg(msg, flags));
+}
+```
+
+## Security Features
+
+### Pledge
+
+The `pledge` syscall restricts process capabilities:
+
+```cpp
+ErrorOr<FlatPtr> Process::sys$pledge(
+    Userspace<SC_pledge_params const*> user_params
+)
+{
+    auto params = TRY(copy_typed_from_user(user_params));
+    
+    // Parse promise strings
+    auto promises = TRY(parse_pledge_promises(params.promises));
+    auto execpromises = TRY(parse_pledge_promises(params.execpromises));
+    
+    // Set promises (can only restrict, not expand)
+    if (has_promises() && (promises & ~m_promises))
+        return EPERM;  // Attempting to add promises
+    
+    m_promises = promises;
+    m_execpromises = execpromises;
+    m_has_promises = true;
+    
+    return 0;
+}
+```
+
+After pledging, violating promises terminates the process:
+
+```cpp
+#define REQUIRE_PROMISE(promise) \
+    if (has_promises() && !(promises() & (1u << (u32)Pledge::promise))) \
+        return EPERM;
+```
+
+### Unveil
+
+The `unveil` syscall restricts filesystem access:
+
+```cpp
+ErrorOr<FlatPtr> Process::sys$unveil(
+    Userspace<SC_unveil_params const*> user_params
+)
+{
+    auto params = TRY(copy_typed_from_user(user_params));
+    
+    // Add path to unveil tree
+    TRY(m_unveil_data.with([&](auto& unveil_data) {
+        return unveil_data.tree.add_path(
+            path,
+            parse_unveil_permissions(params.permissions)
+        );
+    }));
+    
+    return 0;
+}
+```
+
+<Info>
+Pledge and unveil provide defense-in-depth security. Use them early in program initialization to limit attack surface.
+</Info>
+
+## Parameter Validation
+
+### User Space Pointers
+
+All user space pointers must be validated:
+
+```cpp
+// Copy from user space
+auto params = TRY(copy_typed_from_user(user_params));
+
+// Copy string from user space  
+auto path = TRY(get_syscall_path_argument(params.path));
+
+// Copy buffer from user space
+auto buffer = TRY(copy_buffer_from_user(user_buffer, size));
+```
+
+### Argument Sanitization
+
+```cpp
+ErrorOr<FlatPtr> Process::sys$open(Userspace<SC_open_params const*> user_params)
+{
+    // Validate file descriptor
+    if (params.dirfd < 0 && params.dirfd != AT_FDCWD)
+        return EBADF;
+    
+    // Validate flags
+    if ((params.options & O_RDWR) && (params.options & O_WRONLY))
+        return EINVAL;
+    
+    // Apply umask to mode
+    auto mode = params.mode & ~umask();
+    
+    // ...
+}
+```
+
+<Warning>
+Never trust user space input. Always validate pointers, sizes, flags, and values before using them.
+</Warning>
+
+## Error Handling
+
+### Return Values
+
+Syscalls return `ErrorOr<FlatPtr>`:
+- **Success**: Return value (usually 0 or positive)
+- **Error**: Return `Error::from_errno(errno_value)`
+
+```cpp
+ErrorOr<FlatPtr> Process::sys$read(int fd, Userspace<u8*> buffer, size_t size)
+{
+    if (size > SSIZE_MAX)
+        return EINVAL;
+    
+    auto description = TRY(open_file_description(fd));
+    if (!description->is_readable())
+        return EBADF;
+    
+    return TRY(description->read(buffer, size));
+}
+```
+
+### Error Codes
+
+Common errno values (from `Kernel/API/POSIX/errno.h`):
+- `EINVAL`: Invalid argument
+- `EBADF`: Bad file descriptor
+- `ENOMEM`: Out of memory
+- `EACCES`: Permission denied
+- `ENOENT`: No such file or directory
+- `EINTR`: Interrupted system call
+- `EAGAIN`: Resource temporarily unavailable
+
+## Performance Considerations
+
+### Fast Paths
+
+Optimize common cases:
+```cpp
+// Fast path for small reads
+if (size <= SMALL_READ_SIZE && buffer_is_available())
+    return fast_read(buffer, size);
+
+// Slow path for complex cases
+return slow_read_with_locking(buffer, size);
+```
+
+### Avoiding System Calls
+
+User space can avoid syscalls using:
+- **vDSO**: Virtual dynamic shared object for fast operations
+- **Time Page**: Shared memory page for reading time
+- **Buffering**: Reduce syscall frequency via LibC buffering
+
+```cpp
+// Map the time page (shared kernel-user memory)
+sys$map_time_page();
+
+// Read time without syscall
+struct timespec time = *g_time_page;
+```
+
+## Debugging Syscalls
+
+### Syscall Tracing
+
+Enable ptrace to trace syscalls:
+```cpp
+ptrace(PTRACE_SYSCALL, child_pid, nullptr, nullptr);
+
+// Child makes syscall
+// Parent receives SIGTRAP
+// Parent can inspect registers
+```
+
+### Profiling
+
+The kernel tracks syscall performance:
+```cpp
+PerformanceManager::add_syscall_event(*current_thread, regs);
+```
+
+## Related Files
+
+- `Kernel/API/Syscall.h` - Syscall definitions and numbers
+- `Kernel/Syscalls/SyscallHandler.cpp` - Main syscall dispatcher
+- `Kernel/Syscalls/*.cpp` - Individual syscall implementations
+- `Kernel/API/POSIX/` - POSIX-compatible type definitions
+- `Kernel/Tasks/Process.h` - Process syscall handlers

@@ -1,0 +1,628 @@
+---
+title: 'LibGUI'
+description: 'GUI toolkit for building native SerenityOS applications with widgets, windows, and events'
+icon: 'window-restore'
+---
+
+## Overview
+
+LibGUI is SerenityOS's native GUI toolkit providing widgets, windows, layouts, and event handling for building graphical applications. It offers a rich set of controls from basic buttons to complex table views, all with a clean object-oriented API.
+
+<Info>
+LibGUI applications automatically integrate with the SerenityOS WindowServer for window management, theming, and input handling.
+</Info>
+
+## Getting Started
+
+### Application
+
+Every GUI application starts with a `GUI::Application` instance.
+
+```cpp
+#include <LibGUI/Application.h>
+#include <LibGUI/Window.h>
+#include <LibGUI/Button.h>
+#include <LibMain/Main.h>
+
+ErrorOr<int> serenity_main(Main::Arguments arguments)
+{
+    auto app = TRY(GUI::Application::create(arguments));
+    
+    auto window = GUI::Window::construct();
+    window->set_title("My Application");
+    window->resize(300, 200);
+    
+    auto button = window->set_main_widget<GUI::Button>("Click me!");
+    button->on_click = [&](auto) {
+        outln("Button clicked!");
+    };
+    
+    window->show();
+    return app->exec();
+}
+```
+
+<Accordion title="Application Lifecycle">
+1. **Create Application**: `GUI::Application::create()`
+2. **Build UI**: Create windows and widgets
+3. **Show Windows**: Call `window->show()`
+4. **Run Event Loop**: Call `app->exec()`
+5. **Cleanup**: Automatic when app exits
+</Accordion>
+
+## Windows
+
+### Window
+
+Top-level window container.
+
+```cpp
+#include <LibGUI/Window.h>
+
+auto window = GUI::Window::construct();
+
+// Basic properties
+window->set_title("My Window");
+window->set_rect(100, 100, 640, 480); // x, y, width, height
+window->resize(800, 600);
+window->center_on_screen();
+
+// Window modes
+window->set_resizable(true);
+window->set_minimizable(true);
+window->set_closeable(true);
+window->set_frameless(false);
+
+// Window states
+window->set_maximized(true);
+window->set_minimized(false);
+window->set_fullscreen(false);
+
+// Set main widget
+auto main_widget = window->set_main_widget<GUI::Widget>();
+
+// Show/hide
+window->show();
+window->hide();
+```
+
+<CodeGroup>
+```cpp Basic Window
+auto window = GUI::Window::construct();
+window->set_title("Hello");
+window->resize(400, 300);
+window->set_main_widget<GUI::Label>("Hello, World!");
+window->show();
+```
+
+```cpp Modal Window
+auto dialog = GUI::Window::construct();
+dialog->set_title("Dialog");
+dialog->set_modal(true);
+dialog->resize(300, 150);
+// ... add widgets ...
+dialog->exec(); // Blocks until closed
+```
+
+```cpp Window with Menu
+auto window = GUI::Window::construct();
+
+auto menubar = window->add_menu("File");
+menubar->add_action(GUI::Action::create("Open...", [&](auto&) {
+    // Open file dialog
+}));
+menubar->add_separator();
+menubar->add_action(GUI::CommonActions::make_quit_action([](auto&) {
+    GUI::Application::the()->quit();
+}));
+```
+</CodeGroup>
+
+**Key Properties:**
+
+<ParamField path="title" type="String">
+  Window title displayed in title bar
+</ParamField>
+
+<ParamField path="resizable" type="bool">
+  Whether window can be resized by user
+</ParamField>
+
+<ParamField path="modal" type="bool">
+  If true, blocks interaction with other windows
+</ParamField>
+
+<ParamField path="fullscreen" type="bool">
+  Fullscreen mode (hides title bar and decorations)
+</ParamField>
+
+## Core Widgets
+
+### Widget
+
+Base class for all GUI widgets.
+
+```cpp
+#include <LibGUI/Widget.h>
+
+auto widget = GUI::Widget::construct();
+
+// Size constraints
+widget->set_min_size(100, 50);
+widget->set_max_size(500, 300);
+widget->set_fixed_size(200, 100);
+widget->set_fixed_width(150);
+widget->set_fixed_height(75);
+
+// Visibility
+widget->set_visible(true);
+widget->set_enabled(true);
+
+// Focus
+widget->set_focus_policy(GUI::FocusPolicy::StrongFocus);
+widget->set_focus(true);
+
+// Tooltips
+widget->set_tooltip("This is a helpful tooltip"sv);
+
+// Background
+widget->set_fill_with_background_color(true);
+widget->set_background_role(Gfx::ColorRole::Base);
+```
+
+### Button
+
+Clickable button widget.
+
+```cpp
+#include <LibGUI/Button.h>
+
+auto button = GUI::Button::construct("Click me!");
+
+// Handle clicks
+button->on_click = [](auto) {
+    dbgln("Button was clicked!");
+};
+
+// Checkable button
+button->set_checkable(true);
+button->set_checked(false);
+button->on_checked = [](bool checked) {
+    dbgln("Button checked: {}", checked);
+};
+
+// Icon
+button->set_icon(Gfx::Bitmap::load_from_file("/res/icons/16x16/app.png").release_value_but_fixme_should_propagate_errors());
+```
+
+### Label
+
+Text display widget.
+
+```cpp
+#include <LibGUI/Label.h>
+
+auto label = GUI::Label::construct("Hello, World!");
+
+// Text alignment
+label->set_text_alignment(Gfx::TextAlignment::Center);
+
+// Word wrap
+label->set_word_wrap(true);
+
+// Update text
+label->set_text("New text"sv);
+```
+
+### TextBox & TextEditor
+
+Single-line and multi-line text input.
+
+```cpp
+#include <LibGUI/TextBox.h>
+#include <LibGUI/TextEditor.h>
+
+// Single-line input
+auto textbox = GUI::TextBox::construct();
+textbox->set_placeholder("Enter text..."sv);
+textbox->on_change = [&]() {
+    dbgln("Text: {}", textbox->text());
+};
+
+// Multi-line editor
+auto editor = GUI::TextEditor::construct();
+editor->set_text("Initial content"sv);
+editor->set_mode(GUI::TextEditor::Mode::MultiLine);
+editor->set_wrapping_mode(GUI::TextEditor::WrappingMode::WrapAtWords);
+```
+
+### CheckBox & RadioButton
+
+Toggle controls.
+
+```cpp
+#include <LibGUI/CheckBox.h>
+#include <LibGUI/RadioButton.h>
+
+auto checkbox = GUI::CheckBox::construct("Enable feature");
+checkbox->set_checked(true);
+checkbox->on_checked = [](bool checked) {
+    dbgln("Checked: {}", checked);
+};
+
+auto radio1 = GUI::RadioButton::construct("Option 1");
+auto radio2 = GUI::RadioButton::construct("Option 2");
+// Radio buttons in same parent auto-group
+```
+
+### ComboBox
+
+Dropdown selection widget.
+
+```cpp
+#include <LibGUI/ComboBox.h>
+
+Vector<String> options = { "Red"_string, "Green"_string, "Blue"_string };
+auto combobox = GUI::ComboBox::construct();
+combobox->set_model(*GUI::ItemListModel<String>::create(options));
+combobox->set_selected_index(0);
+
+combobox->on_change = [&](auto& text, auto& index) {
+    dbgln("Selected: {} (index {})", text, index.row());
+};
+```
+
+### Slider & SpinBox
+
+Numeric input controls.
+
+```cpp
+#include <LibGUI/Slider.h>
+#include <LibGUI/SpinBox.h>
+
+auto slider = GUI::HorizontalSlider::construct();
+slider->set_range(0, 100);
+slider->set_value(50);
+slider->on_change = [](int value) {
+    dbgln("Slider: {}", value);
+};
+
+auto spinbox = GUI::SpinBox::construct();
+spinbox->set_range(0, 100);
+spinbox->set_value(10);
+```
+
+## Container Widgets
+
+### GroupBox
+
+Visual grouping with optional title.
+
+```cpp
+#include <LibGUI/GroupBox.h>
+
+auto groupbox = GUI::GroupBox::construct("Options");
+auto& layout = groupbox->set_layout<GUI::VerticalBoxLayout>();
+layout.set_margins(10);
+
+groupbox->add<GUI::CheckBox>("Option 1");
+groupbox->add<GUI::CheckBox>("Option 2");
+```
+
+### Frame
+
+Decorative frame container.
+
+```cpp
+#include <LibGUI/Frame.h>
+
+auto frame = GUI::Frame::construct();
+frame->set_frame_style(Gfx::FrameStyle::SunkenContainer);
+frame->set_thickness(2);
+```
+
+### TabWidget
+
+Multi-page tabbed interface.
+
+```cpp
+#include <LibGUI/TabWidget.h>
+
+auto tabs = GUI::TabWidget::construct();
+
+auto& page1 = tabs->add_tab<GUI::Widget>("Page 1");
+page1.set_layout<GUI::VerticalBoxLayout>();
+page1.add<GUI::Label>("Content 1");
+
+auto& page2 = tabs->add_tab<GUI::Widget>("Page 2");
+page2.set_layout<GUI::VerticalBoxLayout>();
+page2.add<GUI::Label>("Content 2");
+```
+
+### SplitterWidget
+
+Resizable split view.
+
+```cpp
+#include <LibGUI/Splitter.h>
+
+auto splitter = GUI::HorizontalSplitter::construct();
+
+auto& left = splitter->add<GUI::Widget>();
+left.set_layout<GUI::VerticalBoxLayout>();
+// ... add widgets to left ...
+
+auto& right = splitter->add<GUI::Widget>();
+right.set_layout<GUI::VerticalBoxLayout>();
+// ... add widgets to right ...
+```
+
+## Layouts
+
+### VerticalBoxLayout & HorizontalBoxLayout
+
+Stack widgets vertically or horizontally.
+
+```cpp
+#include <LibGUI/BoxLayout.h>
+
+auto widget = GUI::Widget::construct();
+auto& layout = widget->set_layout<GUI::VerticalBoxLayout>();
+
+// Layout properties
+layout.set_spacing(5);
+layout.set_margins({ 10, 10, 10, 10 }); // top, right, bottom, left
+
+// Add widgets
+widget->add<GUI::Label>("Top");
+widget->add<GUI::Button>("Middle");
+widget->add<GUI::Label>("Bottom");
+
+// Spacers
+layout.add_spacer(); // Flexible space
+layout.add_layout<GUI::HorizontalBoxLayout>(); // Nested layout
+```
+
+<CodeGroup>
+```cpp Vertical Layout
+auto container = GUI::Widget::construct();
+auto& layout = container->set_layout<GUI::VerticalBoxLayout>();
+layout.set_margins(10);
+layout.set_spacing(5);
+
+container->add<GUI::Label>("Header");
+container->add<GUI::TextBox>();
+container->add<GUI::Button>("Submit");
+```
+
+```cpp Horizontal Layout
+auto toolbar = GUI::Widget::construct();
+auto& layout = toolbar->set_layout<GUI::HorizontalBoxLayout>();
+layout.set_spacing(2);
+
+toolbar->add<GUI::Button>("New");
+toolbar->add<GUI::Button>("Open");
+toolbar->add<GUI::Button>("Save");
+layout.add_spacer(); // Push remaining buttons right
+toolbar->add<GUI::Button>("Help");
+```
+</CodeGroup>
+
+## Advanced Widgets
+
+### TableView & ListView
+
+Display tabular and list data.
+
+```cpp
+#include <LibGUI/TableView.h>
+#include <LibGUI/Model.h>
+
+class MyModel : public GUI::Model {
+public:
+    virtual int row_count(GUI::ModelIndex const&) const override {
+        return m_data.size();
+    }
+    
+    virtual int column_count(GUI::ModelIndex const&) const override {
+        return 2; // Name and Age columns
+    }
+    
+    virtual GUI::Variant data(GUI::ModelIndex const& index, GUI::ModelRole role) const override {
+        if (role == GUI::ModelRole::Display) {
+            auto& row = m_data[index.row()];
+            return index.column() == 0 ? row.name : String::number(row.age);
+        }
+        return {};
+    }
+    
+private:
+    struct Person { String name; int age; };
+    Vector<Person> m_data;
+};
+
+auto table = GUI::TableView::construct();
+table->set_model(adopt_ref(*new MyModel()));
+table->set_column_headers_visible(true);
+```
+
+### TreeView
+
+Hierarchical tree display.
+
+```cpp
+#include <LibGUI/TreeView.h>
+
+auto tree = GUI::TreeView::construct();
+tree->set_model(/* your tree model */);
+tree->set_should_fill_selected_rows(true);
+
+tree->on_selection_change = [&]() {
+    auto index = tree->selection().first();
+    dbgln("Selected row {}", index.row());
+};
+```
+
+## Dialogs
+
+### MessageBox
+
+Simple message dialogs.
+
+```cpp
+#include <LibGUI/MessageBox.h>
+
+GUI::MessageBox::show(window, 
+    "File saved successfully!",
+    "Success",
+    GUI::MessageBox::Type::Information);
+
+auto result = GUI::MessageBox::show(window,
+    "Delete this file?",
+    "Confirm",
+    GUI::MessageBox::Type::Warning,
+    GUI::MessageBox::InputType::YesNo);
+    
+if (result == GUI::MessageBox::ExecResult::Yes) {
+    // Delete file
+}
+```
+
+### FilePicker
+
+File selection dialogs.
+
+```cpp
+#include <LibGUI/FilePicker.h>
+
+auto result = GUI::FilePicker::get_open_filepath(window,
+    "Select file",
+    "/home/anon",
+    false); // allow_multiple
+
+if (result.has_value()) {
+    auto path = result.value();
+    dbgln("Selected: {}", path);
+}
+
+// Save dialog
+auto save_path = GUI::FilePicker::get_save_filepath(window,
+    "Save as",
+    "untitled.txt",
+    "/home/anon");
+```
+
+## Actions & Menus
+
+### Action
+
+Reusable command with icon, text, and shortcut.
+
+```cpp
+#include <LibGUI/Action.h>
+
+auto open_action = GUI::Action::create(
+    "&Open...",
+    { Mod_Ctrl, Key_O },
+    Gfx::Bitmap::load_from_file("/res/icons/16x16/open.png").release_value_but_fixme_should_propagate_errors(),
+    [&](auto&) {
+        // Open file dialog
+    }
+);
+
+// Common actions
+auto quit_action = GUI::CommonActions::make_quit_action([](auto&) {
+    GUI::Application::the()->quit();
+});
+```
+
+### Menu & Menubar
+
+Application menus.
+
+```cpp
+auto menubar = GUI::Menubar::construct();
+
+auto& file_menu = menubar->add_menu("&File");
+file_menu.add_action(open_action);
+file_menu.add_action(save_action);
+file_menu.add_separator();
+file_menu.add_action(quit_action);
+
+auto& edit_menu = menubar->add_menu("&Edit");
+edit_menu.add_action(GUI::CommonActions::make_undo_action([](auto&) {}));
+edit_menu.add_action(GUI::CommonActions::make_redo_action([](auto&) {}));
+
+window->set_menubar(move(menubar));
+```
+
+## Events
+
+### Event Handling
+
+Override event handlers in custom widgets.
+
+```cpp
+class MyWidget : public GUI::Widget {
+    C_OBJECT(MyWidget)
+public:
+    virtual void paint_event(GUI::PaintEvent& event) override {
+        GUI::Painter painter(*this);
+        painter.fill_rect(rect(), Gfx::Color::White);
+        // Custom painting...
+    }
+    
+    virtual void mousedown_event(GUI::MouseEvent& event) override {
+        dbgln("Clicked at {}, {}", event.x(), event.y());
+    }
+    
+    virtual void keydown_event(GUI::KeyEvent& event) override {
+        if (event.key() == Key_Return) {
+            // Handle Enter key
+        }
+    }
+    
+    virtual void resize_event(GUI::ResizeEvent& event) override {
+        dbgln("Resized to {}x{}", event.size().width(), event.size().height());
+    }
+};
+```
+
+## Best Practices
+
+<Accordion title="Widget Hierarchy">
+- Use layouts instead of manual positioning
+- Set size constraints (min/max) instead of fixed sizes when possible
+- Use spacers to control widget spacing
+- Nest layouts for complex UIs
+</Accordion>
+
+<Accordion title="Memory Management">
+```cpp
+// Widgets are reference counted
+auto button = GUI::Button::construct(); // RefPtr<Button>
+
+// Adding to parent transfers ownership
+container->add_child(button); // container now owns button
+
+// Use C_OBJECT macro in custom widgets
+class MyWidget : public GUI::Widget {
+    C_OBJECT(MyWidget) // Provides construct() and create()
+private:
+    MyWidget() = default; // Constructor must be private
+};
+```
+</Accordion>
+
+<Accordion title="Theming">
+- Use semantic colors via `Gfx::ColorRole`
+- Don't hardcode colors - respect system theme
+- Use standard icons from `/res/icons/`
+- Follow SerenityOS HIG (Human Interface Guidelines)
+</Accordion>
+
+## Related APIs
+
+- [LibGfx](/api/libgfx) - Graphics primitives and rendering
+- [LibCore](/api/libcore) - Event loop and I/O
+- [WindowServer](/features/services) - Window management service

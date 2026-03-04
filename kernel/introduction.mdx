@@ -1,0 +1,203 @@
+---
+title: Kernel Introduction
+description: Introduction to the SerenityOS kernel architecture and design philosophy
+---
+
+## Overview
+
+The SerenityOS kernel is a modern, Unix-like operating system kernel written from scratch in C++. It provides the core functionality for process management, memory management, device drivers, filesystems, and networking.
+
+<Info>
+The kernel entry point is located in `Kernel/Arch/init.cpp`, where the boot process initializes all major subsystems before starting the scheduler and transitioning to multi-tasking.
+</Info>
+
+## Design Philosophy
+
+The SerenityOS kernel follows several key design principles:
+
+### Security First
+
+Security is a top priority in kernel development. The kernel implements multiple security mitigations and follows strict guidelines:
+
+- **No security undermining**: Existing security measures must never be compromised
+- **Proper privilege separation**: Clear boundaries between kernel and userspace
+- **Security features**: Multiple mitigations documented in the system (see `Base/usr/share/man/man7/Mitigations.md`)
+
+### OOM Safety
+
+Out-of-memory handling is critical in kernel code. The kernel uses modern error handling patterns:
+
+```cpp
+// Always use TRY() semantics with appropriate adopt_* functions
+auto new_object = TRY(adopt_nonnull_own_or_enomem(new (nothrow) Object(...)));
+```
+
+This approach ensures errors propagate properly to userspace, allowing programs to handle memory allocation failures gracefully.
+
+### Userspace Compatibility
+
+"We don't break userspace" - while the kernel doesn't guarantee ABI/API stability, it ensures that:
+
+- Kernel changes don't introduce misbehavior in userland
+- Changes are tested with userland utilities
+- Kernel and userland changes happen atomically in the same commit
+- Functionality is only removed when clearly unused
+
+### Practical Hardware Support
+
+The kernel only supports hardware that is actually used:
+
+<Note>
+Every kernel feature should be backed by a userland use case. The project doesn't maintain drivers or features that nobody uses, keeping the codebase lean and maintainable.
+</Note>
+
+## Kernel Components
+
+The kernel is organized into several major subsystems:
+
+### Core Subsystems
+
+- **Process & Thread Management** (`Kernel/Tasks/`)
+  - Process lifecycle management
+  - Thread scheduling and synchronization
+  - Process groups and sessions
+  - Work queues and deferred execution
+
+- **Memory Management** (`Kernel/Memory/`)
+  - Physical memory allocation (zones and pages)
+  - Virtual memory with address spaces
+  - Memory mapping and regions
+  - VM objects (anonymous, inode-backed, shared)
+
+- **File Systems** (`Kernel/FileSystem/`)
+  - Virtual File System (VFS) layer
+  - Multiple filesystem implementations (Ext2, FAT, ISO9660, Plan9, RAMFS)
+  - File descriptors and open file descriptions
+  - Mount management and VFS root contexts
+
+- **Device Drivers** (`Kernel/Devices/`)
+  - Character and block device framework
+  - Storage management
+  - Graphics and display devices
+  - Input devices
+  - Audio devices
+  - Generic devices (null, zero, random, etc.)
+
+### System Services
+
+- **Networking** (`Kernel/Net/`)
+  - TCP/IP stack
+  - Socket implementations (IPv4, TCP, UDP, Unix)
+  - Network task and management
+
+- **Interrupt Handling** (`Kernel/Interrupts/`)
+  - Generic interrupt handlers
+  - IRQ management
+  - Shared and spurious interrupt handling
+
+- **Locking Primitives** (`Kernel/Locking/`)
+  - Mutexes and spinlocks
+  - Lock ranking to prevent deadlocks
+  - Protected containers (`MutexProtected<>`, `SpinlockProtected<>`)
+
+- **System Calls** (`Kernel/Syscalls/`)
+  - POSIX-compatible syscall interface
+  - Syscall handler framework
+
+## Architecture Support
+
+The kernel supports multiple CPU architectures through an architecture abstraction layer:
+
+<Accordion title="Supported Architectures">
+  - **x86_64**: Full support with APIC, PIC, and hypervisor integration
+  - **aarch64**: ARM 64-bit support with Raspberry Pi hardware
+  - **riscv64**: RISC-V 64-bit support with SBI interface
+
+  Architecture-specific code is located in `Kernel/Arch/{arch}/` directories.
+</Accordion>
+
+## Boot Process
+
+The kernel boot sequence (from `Kernel/Arch/init.cpp:141`):
+
+1. **Early Boot**: 
+   - Parse boot information and command line
+   - Set up serial debug output
+   - Initialize the BSP (Bootstrap Processor)
+
+2. **Memory Initialization**:
+   - Initialize kernel heap (`kmalloc_init()`)
+   - Set up memory manager
+   - Load kernel symbol table for debugging
+
+3. **Hardware Discovery**:
+   - Device tree parsing (on ARM/RISC-V)
+   - ACPI initialization (on x86_64)
+   - Interrupt controller setup
+
+4. **Subsystem Initialization**:
+   - Time management
+   - Device initialization
+   - Filesystem mounting
+   - Network stack setup
+
+5. **Scheduler Start**:
+   - Create kernel tasks (finalizer, sync, etc.)
+   - Start the scheduler
+   - Spawn init process
+
+<Info>
+The boot console displays "Starting SerenityOS..." once basic initialization is complete, providing early visual feedback during the boot process.
+</Info>
+
+## Kernel API
+
+The kernel exposes functionality to userspace through:
+
+### System Calls
+
+The primary interface between userspace and kernel. System calls are defined in `Kernel/API/Syscall.h` and follow POSIX standards where applicable.
+
+### Device Files
+
+Hardware and pseudo-devices are exposed through device files in `/dev/`. Major numbers are allocated per device family in `Kernel/API/MajorNumberAllocation.h`.
+
+### Pseudo Filesystems
+
+- **ProcFS**: Process and kernel information
+- **SysFS**: Kernel subsystem configuration and status
+- **DevPtsFS**: Pseudo-terminal devices
+- **RAMFS**: In-memory filesystem
+
+## Container Support
+
+The kernel provides isolation mechanisms for containerization:
+
+- **VFS Root Contexts**: Isolated filesystem views and mount tables
+- **Process Lists**: Scoped or global process visibility
+- **Hostname Contexts**: Shared hostname among process groups
+
+These can be combined with jails to create secure sandboxed environments using the `unshare_create` and `unshare_attach` system calls.
+
+## Development Guidelines
+
+Key principles for kernel development:
+
+- Use `TRY()` semantics for proper error handling
+- Prefer `FixedStringBuffer` for stack allocation over heap allocation
+- Acquire mutexes before spinlocks, never after
+- Use `MutexProtected<>` and `SpinlockProtected<>` containers
+- No hardcoded userspace paths in kernel code
+- Each device needs proper major number allocation
+- New syscalls should be examined strictly - prefer existing interfaces
+
+<Note>
+For detailed development guidelines, see the kernel development documentation in `Documentation/Kernel/DevelopmentGuidelines.md`.
+</Note>
+
+## Next Steps
+
+- Learn about [Kernel Architecture](/kernel/architecture) for detailed subsystem information
+- Explore process management and scheduling concepts
+- Understand memory management implementation
+- Study the locking patterns and SMP support

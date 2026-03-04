@@ -1,0 +1,374 @@
+---
+title: Browser & LibWeb
+description: Modern web browser with from-scratch HTML, CSS, and JavaScript engines
+---
+
+SerenityOS features a fully custom web browser built entirely from scratch, including the HTML/CSS rendering engine (LibWeb) and JavaScript engine (LibJS). The browser demonstrates impressive web standards compliance and continues to improve rapidly.
+
+## Overview
+
+The Browser application is a multi-process, sandboxed web browser that brings modern web capabilities to SerenityOS's retro-inspired interface.
+
+<CardGroup cols={2}>
+  <Card title="Web Standards" icon="code">
+    HTML5, CSS3, JavaScript ES2023+, WebAssembly support
+  </Card>
+  <Card title="Security First" icon="shield">
+    Multi-process architecture with aggressive sandboxing
+  </Card>
+  <Card title="From Scratch" icon="hammer">
+    No external dependencies - built entirely in-house
+  </Card>
+  <Card title="Spec Compliant" icon="check">
+    Actively tracking web standards with test suite integration
+  </Card>
+</CardGroup>
+
+## Standards Compliance
+
+The Browser and LibWeb track the latest web standards with impressive compliance:
+
+- **JavaScript (LibJS)**: [Test262 Compliance Dashboard](https://serenityos.github.io/libjs-website/test262/)
+- **CSS**: [CSS Test Suite Results](https://css.tobyase.de/)
+- **WebAssembly**: [Wasm Spec Tests](https://serenityos.github.io/libjs-website/wasm/)
+
+<Info>
+  The browser passes a significant and growing portion of the official web platform test suites, demonstrating serious standards compliance.
+</Info>
+
+## Multi-Process Architecture
+
+### Process Isolation
+
+The Browser uses a sophisticated multi-process architecture for security and stability:
+
+```
+┌─────────────┐
+│   Browser   │  (GUI Process)
+│   Process   │
+└──────┬──────┘
+       │
+       │ spawns per-tab
+       ▼
+┌─────────────┐
+│ WebContent  │  (Rendering & JS)
+│   Process   │
+└──────┬──────┘
+       │
+       ├──────► RequestServer (Network)
+       │
+       └──────► ImageDecoder (Image Processing)
+```
+
+### Process Types
+
+<Accordion title="Browser Process">
+  The main GUI application process that:
+  - Manages the browser window and UI
+  - Handles user input and navigation
+  - Spawns and manages WebContent processes
+  - Runs with normal user privileges
+  - Provides tab management
+</Accordion>
+
+<Accordion title="WebContent Process">
+  Sandboxed rendering engine that:
+  - Runs LibWeb (HTML/CSS engine)
+  - Executes JavaScript via LibJS
+  - Renders web pages to shared bitmaps
+  - Runs as an unprivileged user
+  - One process per tab for isolation
+  - Cannot access network or files directly
+  - Strictly sandboxed with `pledge()` and `unveil()`
+</Accordion>
+
+<Accordion title="RequestServer Process">
+  Network request handler that:
+  - Handles HTTP, HTTPS, and Gemini protocols
+  - Manages cookies and cache
+  - One instance per WebContent process
+  - Sandboxed network access only
+  - Cannot read arbitrary files
+</Accordion>
+
+<Accordion title="ImageDecoder Process">
+  Isolated image decoding that:
+  - Decodes images in separate processes
+  - Fresh process for each image
+  - Extremely restricted sandbox
+  - Memory-safe implementations
+  - Prevents image parsing vulnerabilities
+</Accordion>
+
+<Info>
+  All processes except the main Browser run as an unprivileged user, separate from the logged-in desktop user, providing defense in depth.
+</Info>
+
+## LibWeb - The Rendering Engine
+
+LibWeb is the from-scratch HTML/CSS rendering engine that powers the browser.
+
+### Core Components
+
+**HTML Parser**
+- HTML5 compliant parsing
+- Error recovery and tolerance
+- Streaming parser implementation
+- Fragment parsing support
+
+**CSS Engine**
+- CSS3 selector support
+- Cascade and inheritance
+- Layout algorithms (Block, Inline, Flex, Grid)
+- CSS animations and transitions
+- Media queries
+- CSS custom properties (variables)
+
+**Layout Engine**
+- Box model implementation
+- Flexbox layout
+- CSS Grid layout
+- Inline and block formatting contexts
+- Positioning (static, relative, absolute, fixed, sticky)
+- Text layout and shaping
+
+**Rendering**
+- Hardware-accelerated painting
+- Layered composition
+- Stacking contexts
+- Overflow handling
+- Clipping and masking
+
+### Document Object Model (DOM)
+
+Full DOM implementation with:
+- DOM Level 4 APIs
+- Event system and bubbling
+- MutationObserver
+- Custom elements support
+- Shadow DOM
+- DOM traversal APIs
+
+### Web APIs
+
+Extensive Web API support including:
+
+<CardGroup cols={2}>
+  <Card title="Canvas API" icon="paintbrush">
+    2D drawing context with shapes, text, and images
+  </Card>
+  <Card title="WebGL" icon="cube">
+    OpenGL ES 2.0 based 3D graphics API
+  </Card>
+  <Card title="Fetch API" icon="download">
+    Modern network request API
+  </Card>
+  <Card title="Web Storage" icon="database">
+    localStorage and sessionStorage
+  </Card>
+  <Card title="IndexedDB" icon="table">
+    Client-side database storage
+  </Card>
+  <Card title="Web Workers" icon="gears">
+    Background JavaScript execution
+  </Card>
+  <Card title="WebSockets" icon="plug">
+    Bidirectional communication
+  </Card>
+  <Card title="SVG" icon="vector-square">
+    Scalable Vector Graphics rendering
+  </Card>
+</CardGroup>
+
+## LibJS - The JavaScript Engine
+
+LibJS is a modern JavaScript engine built from scratch.
+
+### Language Support
+
+**ECMAScript Compliance**
+- ES2023+ features
+- Strict mode
+- Modules (ESM)
+- Classes and inheritance
+- Async/await
+- Generators and iterators
+- Proxy and Reflect
+- WeakMap and WeakSet
+- Symbols
+- BigInt
+- Template literals
+
+### Engine Architecture
+
+**Bytecode Compilation**
+- AST to bytecode compiler
+- Bytecode interpreter
+- Optimization passes
+- Efficient instruction set
+
+**Runtime Features**
+- Garbage collection
+- Exception handling
+- Lexical scoping
+- Closures
+- Prototypal inheritance
+- Property descriptors
+
+### Performance
+
+- Optimizing compiler in development
+- Inline caching for property access
+- Efficient object representation
+- Fast array operations
+- String interning
+
+## WebAssembly Support
+
+The browser includes a WebAssembly implementation:
+
+- Wasm binary format parsing
+- Wasm text format (WAT) support  
+- WebAssembly instantiation API
+- Memory management
+- Table operations
+- Growing spec compliance
+
+<Info>
+  Check the [Wasm test results](https://serenityos.github.io/libjs-website/wasm/) for current specification compliance.
+</Info>
+
+## Browser Features
+
+### User Interface
+
+- Tab management
+- Bookmarks
+- History
+- Downloads manager
+- Inspector/DevTools (in development)
+- Page search
+- View source
+- Cookie management
+- Custom user agent
+
+### Navigation
+
+- Back/forward navigation
+- Page reload
+- Stop loading
+- URL bar with suggestions
+- Home page configuration
+- New tab page
+
+### Settings & Privacy
+
+- Cookie policy configuration
+- JavaScript enable/disable
+- Popup blocking
+- Content filtering
+- Cache management
+- Privacy controls
+
+### Developer Tools
+
+The browser includes developer tools for web development:
+
+- DOM inspector
+- Console for JavaScript debugging
+- Network request monitoring
+- Style inspector
+- JavaScript debugger (in development)
+
+## Supported Protocols
+
+<CardGroup cols={3}>
+  <Card title="HTTP" icon="globe">
+    HTTP/1.1 with Keep-Alive
+  </Card>
+  <Card title="HTTPS" icon="lock">
+    TLS 1.2 and 1.3 support
+  </Card>
+  <Card title="Gemini" icon="gem">
+    Alternative internet protocol
+  </Card>
+  <Card title="File" icon="file">
+    Local file viewing
+  </Card>
+  <Card title="Data URLs" icon="code">
+    Inline data encoding
+  </Card>
+  <Card title="About" icon="circle-info">
+    Browser information pages
+  </Card>
+</CardGroup>
+
+## Security Features
+
+The Browser implements multiple layers of security:
+
+### Sandboxing
+
+- `pledge()` system call restrictions per process
+- `unveil()` file system access controls
+- Process privilege separation
+- Memory protection (W^X)
+
+### Network Security
+
+- State-of-the-art TLS algorithms
+- Certificate validation
+- HTTPS enforcement options
+- Secure cookie handling
+- CORS implementation
+
+### Content Security
+
+- Content Security Policy (CSP)
+- Same-Origin Policy
+- X-Frame-Options support
+- Subresource Integrity (SRI)
+- Mixed content blocking
+
+### Process Isolation
+
+- Per-tab isolation prevents cross-tab attacks
+- Unprivileged rendering processes
+- Isolated image decoding
+- Separate network access layer
+
+<Info>
+  The multi-process architecture ensures that a compromised tab cannot affect other tabs or access system resources.
+</Info>
+
+## File Format Support
+
+The browser can display numerous file formats:
+
+**Images**: PNG, JPEG, GIF, BMP, ICO, SVG, QOI, WebP
+**Documents**: HTML, XML, Markdown (rendered), Plain text, PDF
+**Media**: Audio and video through LibMedia
+**Other**: JSON (formatted), Source code (syntax highlighted)
+
+## Development & Testing
+
+The browser is actively developed with:
+
+- Continuous integration testing
+- Web Platform Tests (WPT) integration
+- Test262 for JavaScript compliance
+- Fuzzing with OSS-Fuzz
+- Regular spec updates
+- Community contributions
+
+<Info>
+  The Browser and LibWeb serve as the foundation for [Ladybird](https://ladybird.dev/), a cross-platform browser built on SerenityOS technology.
+</Info>
+
+## Learn More
+
+For technical details about the browser architecture:
+
+- Process Architecture: `Documentation/Browser/ProcessArchitecture.md`
+- LibWeb Rendering Pipeline: `Documentation/Browser/LibWebFromLoadingToPainting.md`
+- Browsing Contexts: `Documentation/Browser/BrowsingContextsAndNavigables.md`

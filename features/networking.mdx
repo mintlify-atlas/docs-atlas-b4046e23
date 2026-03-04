@@ -1,0 +1,441 @@
+---
+title: Network Stack
+description: TCP/IP network stack implementation with IPv4 and IPv6 support
+---
+
+SerenityOS includes a fully functional network stack built from scratch, supporting modern networking protocols and standards.
+
+## Overview
+
+The SerenityOS network stack provides comprehensive networking capabilities with support for multiple protocols, network interfaces, and socket types.
+
+<CardGroup cols={2}>
+  <Card title="TCP/IP Stack" icon="network-wired">
+    Full IPv4 and IPv6 protocol implementation
+  </Card>
+  <Card title="Socket API" icon="plug">
+    POSIX-compliant socket interface
+  </Card>
+  <Card title="Network Drivers" icon="ethernet">
+    Hardware and virtual network adapters
+  </Card>
+  <Card title="Protocol Support" icon="layer-group">
+    TCP, UDP, ICMP, ARP, and more
+  </Card>
+</CardGroup>
+
+## Network Protocols
+
+### Internet Protocol (IP)
+
+#### IPv4 Support
+
+Complete IPv4 implementation with:
+- IP packet forwarding
+- Fragmentation and reassembly
+- Time-to-live (TTL) handling
+- IP options processing
+- Checksum validation
+- Source routing
+- ICMP integration
+
+#### IPv6 Support
+
+Growing IPv6 capabilities including:
+- IPv6 addressing and routing
+- Neighbor Discovery Protocol
+- ICMPv6 support
+- IPv6 extension headers
+- Dual-stack operation (IPv4/IPv6)
+- Stateless address autoconfiguration (SLAAC)
+
+<Info>
+  Both IPv4 and IPv6 can be used simultaneously, with proper dual-stack support for modern network environments.
+</Info>
+
+### Transport Layer Protocols
+
+<Accordion title="TCP (Transmission Control Protocol)">
+  Full-featured TCP implementation:
+  
+  **Features:**
+  - Three-way handshake
+  - Reliable, ordered delivery
+  - Flow control (sliding window)
+  - Congestion control
+  - Retransmission on packet loss
+  - Connection state management
+  - Graceful connection termination
+  - TCP options support (MSS, window scaling, timestamps)
+  - Keep-alive mechanism
+  
+  **TCP States:**
+  - LISTEN, SYN_SENT, SYN_RECEIVED
+  - ESTABLISHED
+  - FIN_WAIT_1, FIN_WAIT_2
+  - CLOSE_WAIT, CLOSING
+  - LAST_ACK, TIME_WAIT, CLOSED
+</Accordion>
+
+<Accordion title="UDP (User Datagram Protocol)">
+  Lightweight datagram protocol:
+  
+  **Features:**
+  - Connectionless communication
+  - Low overhead
+  - Broadcast and multicast support
+  - Port multiplexing
+  - Checksum validation (optional)
+  - No delivery guarantees
+  
+  **Use Cases:**
+  - DNS queries
+  - DHCP
+  - NTP time synchronization
+  - Streaming media
+  - Real-time applications
+</Accordion>
+
+### Network Layer Protocols
+
+#### ICMP (Internet Control Message Protocol)
+
+ICMP implementation for network diagnostics:
+
+**Message Types:**
+- Echo Request/Reply (ping)
+- Destination Unreachable
+- Time Exceeded
+- Redirect
+- Source Quench
+- Parameter Problem
+
+**ICMPv6:**
+- Echo Request/Reply
+- Neighbor Solicitation/Advertisement
+- Router Solicitation/Advertisement
+- Packet Too Big
+- Time Exceeded
+
+#### ARP (Address Resolution Protocol)
+
+MAC address resolution for IPv4:
+- ARP request/reply handling
+- ARP cache management
+- Gratuitous ARP
+- ARP cache timeout
+- Proxy ARP support
+
+### Link Layer
+
+#### Ethernet
+
+Ethernet frame handling:
+- Frame parsing and validation
+- MAC address filtering
+- EtherType identification
+- VLAN tagging support (802.1Q)
+- Jumbo frames
+
+**Supported EtherTypes:**
+- IPv4 (0x0800)
+- IPv6 (0x86DD)
+- ARP (0x0806)
+- VLAN (0x8100)
+
+## Application Layer Protocols
+
+SerenityOS includes implementations of common application protocols:
+
+<CardGroup cols={2}>
+  <Card title="HTTP/HTTPS" icon="globe">
+    Web protocol with TLS encryption
+  </Card>
+  <Card title="DNS" icon="server">
+    Domain name resolution
+  </Card>
+  <Card title="DHCP" icon="network-wired">
+    Dynamic IP configuration
+  </Card>
+  <Card title="NTP" icon="clock">
+    Network time synchronization
+  </Card>
+  <Card title="IMAP" icon="envelope">
+    Email retrieval protocol
+  </Card>
+  <Card title="Gemini" icon="gem">
+    Alternative internet protocol
+  </Card>
+  <Card title="Telnet" icon="terminal">
+    Remote terminal access
+  </Card>
+  <Card title="WebSocket" icon="plug">
+    Bidirectional web communication
+  </Card>
+</CardGroup>
+
+### HTTP/HTTPS
+
+**HTTP Features:**
+- HTTP/1.0 and HTTP/1.1
+- Keep-alive connections
+- Chunked transfer encoding
+- Content negotiation
+- Cookie management
+- Redirect handling
+- Compression (gzip, deflate)
+
+**HTTPS/TLS:**
+- TLS 1.2 and 1.3
+- Modern cipher suites
+- Certificate validation
+- Perfect Forward Secrecy
+- SNI (Server Name Indication)
+- ALPN (Application-Layer Protocol Negotiation)
+
+### DNS
+
+Domain Name System implementation via LookupServer:
+
+**Features:**
+- A and AAAA record queries
+- CNAME resolution
+- MX records for mail
+- PTR records (reverse DNS)
+- NS records
+- SOA records
+- Query caching
+- Multiple nameserver support
+- /etc/hosts file integration
+- Recursive resolution
+
+### DHCP
+
+Dynamic Host Configuration Protocol client:
+
+- Automatic IP address assignment
+- Network parameter configuration (gateway, DNS)
+- Lease management and renewal
+- DHCP discovery and negotiation
+- DHCP release on shutdown
+
+## Socket API
+
+SerenityOS provides a POSIX-compliant socket API for network programming:
+
+### Socket Types
+
+```cpp
+// Stream socket (TCP)
+int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+// Datagram socket (UDP)
+int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+// Raw socket (requires privileges)
+int sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+```
+
+### Address Families
+
+- **AF_INET** - IPv4 addressing
+- **AF_INET6** - IPv6 addressing
+- **AF_LOCAL** (AF_UNIX) - Local/Unix domain sockets
+
+### Socket Operations
+
+Full socket API support:
+- `socket()` - Create socket
+- `bind()` - Bind to address/port
+- `listen()` - Listen for connections
+- `accept()` - Accept incoming connection
+- `connect()` - Establish connection
+- `send()` / `recv()` - Send/receive data
+- `sendto()` / `recvfrom()` - Datagram operations
+- `close()` - Close socket
+- `shutdown()` - Shut down part of connection
+- `getsockopt()` / `setsockopt()` - Socket options
+
+### Non-blocking and Async I/O
+
+- Non-blocking socket mode
+- `select()` for multiplexing
+- `poll()` for event notification
+- `epoll()` for scalable event handling
+
+## Network Adapters
+
+Support for various network interface types:
+
+### Hardware Adapters
+
+<Accordion title="Intel E1000 Family">
+  E1000 and E1000E network adapter drivers:
+  - PCI and PCIe variants
+  - Interrupt and polling modes
+  - Transmit and receive queues
+  - Hardware checksums
+  - Link state detection
+</Accordion>
+
+<Accordion title="Intel i225 Series">
+  Modern Intel Ethernet controllers with:
+  - Multi-gigabit support
+  - Advanced features
+  - Energy efficient operation
+</Accordion>
+
+### Virtual Adapters
+
+<Accordion title="Loopback Interface">
+  Standard loopback (127.0.0.1/::1):
+  - Local communication
+  - No hardware required
+  - Testing and development
+  - Perfect reliability
+</Accordion>
+
+<Accordion title="VirtIO Network">
+  Paravirtualized network for virtual machines:
+  - KVM/QEMU support
+  - High performance in VMs
+  - Low overhead
+  - Modern virtqueue interface
+</Accordion>
+
+## Network Configuration
+
+### Static Configuration
+
+Manual network setup:
+```bash
+# Configure IP address
+ifconfig eth0 192.168.1.100 netmask 255.255.255.0
+
+# Set default gateway
+route add default gw 192.168.1.1
+
+# Configure DNS
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+```
+
+### Dynamic Configuration (DHCP)
+
+Automatic configuration via DHCPClient service:
+- Automatic IP assignment
+- Default gateway configuration
+- DNS server configuration
+- Network interface activation
+
+### Network Settings Application
+
+GUI application for network configuration:
+- Interface management
+- IP address configuration
+- Gateway and DNS setup
+- Connection status monitoring
+
+## Network Tools
+
+SerenityOS includes standard network utilities:
+
+### Diagnostic Tools
+
+- **ping** - Test connectivity with ICMP echo
+- **ifconfig** - Configure network interfaces
+- **route** - View and modify routing table
+- **netstat** - Network statistics and connections
+- **arp** - View and modify ARP cache
+- **traceroute** - Trace packet route to destination
+- **nslookup** - DNS query tool
+- **host** - DNS lookup utility
+
+### Network Applications
+
+- **fetch** - Download files via HTTP/HTTPS
+- **telnet** - Telnet client
+- **nc (netcat)** - Network Swiss Army knife
+- **wget** - Non-interactive file downloader
+
+## Network Security
+
+### Firewall & Filtering
+
+Packet filtering capabilities:
+- Connection state tracking
+- Port-based filtering
+- Protocol filtering
+- Network address translation (NAT) in development
+
+### TLS/SSL
+
+Secure communication with LibTLS:
+
+**Cipher Suites:**
+- RSA and ECDHE key exchange
+- AES-GCM, ChaCha20-Poly1305 encryption
+- SHA-256, SHA-384 hashing
+- Modern, secure algorithms only
+
+**Certificate Validation:**
+- X.509 certificate parsing
+- Certificate chain validation
+- Hostname verification
+- Certificate expiration checking
+- Revocation checking (in development)
+
+### Security Features
+
+- TCP SYN cookies for DoS protection
+- Rate limiting for ICMP
+- Randomized port allocation
+- Sequence number randomization
+- Path MTU discovery
+
+<Info>
+  Network services are sandboxed using `pledge()` and `unveil()` to limit potential security exposure.
+</Info>
+
+## Performance Features
+
+### Optimizations
+
+- Zero-copy networking where possible
+- Scatter-gather I/O
+- TCP window scaling
+- Selective acknowledgment (SACK)
+- Fast retransmit and recovery
+- Nagle's algorithm
+- Delayed ACK
+
+### Buffer Management
+
+- Efficient mbuf (memory buffer) system
+- Buffer pooling
+- Dynamic buffer allocation
+- Memory pressure handling
+
+## Routing
+
+Routing table management:
+
+- Static routes
+- Default gateway
+- Network-specific routes
+- Host-specific routes
+- Route metrics and preferences
+- Multiple routing tables (in development)
+
+## Network Monitoring
+
+Tools for monitoring network activity:
+
+- Real-time connection monitoring
+- Packet statistics
+- Interface statistics (bytes, packets, errors)
+- Protocol-specific counters
+- SystemMonitor integration
+
+<Info>
+  The network stack is continuously being improved with new features, better performance, and enhanced protocol support.
+</Info>

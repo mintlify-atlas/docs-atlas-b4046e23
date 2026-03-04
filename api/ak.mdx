@@ -1,0 +1,468 @@
+---
+title: 'AK (Andreas Kling Library)'
+description: 'SerenityOS custom C++ standard library providing modern, safe alternatives to STL'
+icon: 'brackets-curly'
+---
+
+## Overview
+
+AK (short for Andreas Kling) is SerenityOS's custom C++ standard library implementation. It provides a comprehensive set of modern, memory-safe data structures and utilities that replace the C++ STL throughout the codebase. AK contains **186+ header files** offering containers, smart pointers, string handling, error handling, and more.
+
+<Info>
+AK is designed to be used both in userspace and the kernel (with appropriate restrictions). Headers that cannot be used in the kernel are explicitly marked.
+</Info>
+
+## Core Containers
+
+### Vector
+
+Dynamic array container with inline capacity optimization.
+
+```cpp
+#include <AK/Vector.h>
+
+Vector<int> numbers;
+numbers.append(1);
+numbers.append(2);
+numbers.append(3);
+
+// With inline capacity (no heap allocation for small sizes)
+Vector<int, 16> small_vec; // First 16 elements stored inline
+```
+
+<ParamField path="inline_capacity" type="size_t" default="0">
+  Number of elements to store inline before allocating on heap. Default is 0 (always use heap).
+</ParamField>
+
+**Key Methods:**
+- `append(T)` - Add element to end
+- `prepend(T)` - Add element to beginning
+- `ensure_capacity(size_t)` - Pre-allocate space
+- `size()` - Get current size
+- `is_empty()` - Check if empty
+- `clear()` - Remove all elements
+- `at(index)` - Bounds-checked access
+- `operator[]` - Direct access
+
+### HashMap
+
+Hash table mapping keys to values with optional ordering.
+
+```cpp
+#include <AK/HashMap.h>
+
+HashMap<String, int> ages;
+ages.set("Alice"_string, 30);
+ages.set("Bob"_string, 25);
+
+if (auto age = ages.get("Alice"_string)) {
+    dbgln("Alice is {} years old", *age);
+}
+
+// Remove entry
+ages.remove("Bob"_string);
+```
+
+**Key Methods:**
+- `set(K key, V value)` - Insert or update
+- `try_set(K, V)` - ErrorOr version
+- `get(K key)` - Returns Optional&lt;V&gt;
+- `contains(K key)` - Check existence
+- `remove(K key)` - Remove entry
+- `size()` - Number of entries
+- `clear()` - Remove all entries
+
+### HashTable
+
+Hash set for storing unique values.
+
+```cpp
+#include <AK/HashTable.h>
+
+HashTable<String> unique_names;
+unique_names.set("Alice"_string);
+unique_names.set("Bob"_string);
+
+if (unique_names.contains("Alice"_string)) {
+    // Alice is in the set
+}
+```
+
+## String Types
+
+### String
+
+Modern, UTF-8 encoded, immutable string type (reference counted).
+
+```cpp
+#include <AK/String.h>
+
+// Create from UTF-8
+auto str = MUST(String::from_utf8("Hello, World!"sv));
+
+// Short string optimization (no heap allocation)
+auto short_str = String::from_code_point('A');
+
+// String operations
+auto upper = MUST(str.to_ascii_uppercase());
+auto lower = MUST(str.to_ascii_lowercase());
+
+// Check equality
+if (str.equals_ignoring_ascii_case(upper)) {
+    // They match
+}
+```
+
+<Info>
+**Short String Optimization**: Strings up to `MAX_SHORT_STRING_BYTE_COUNT` bytes are stored inline without heap allocation.
+</Info>
+
+**Key Methods:**
+- `from_utf8(StringView)` - Create from UTF-8 bytes (validates encoding)
+- `from_utf8_without_validation()` - Skip validation for trusted input
+- `from_code_point(u32)` - Create from single Unicode code point
+- `repeated(String, size_t)` - Repeat string N times
+- `to_lowercase()` - Convert to lowercase (requires LibUnicode)
+- `to_uppercase()` - Convert to uppercase (requires LibUnicode)
+- `to_ascii_lowercase()` - ASCII-only lowercase
+- `to_ascii_uppercase()` - ASCII-only uppercase
+- `bytes_as_string_view()` - View as StringView
+
+### StringView
+
+Non-owning view into a string (like `std::string_view`).
+
+```cpp
+#include <AK/StringView.h>
+
+StringView view = "Hello"sv;
+auto sub = view.substring_view(0, 4); // "Hell"
+
+if (view.starts_with("Hel"sv)) {
+    // true
+}
+```
+
+### StringBuilder
+
+Efficient string building without repeated allocations.
+
+```cpp
+#include <AK/StringBuilder.h>
+
+StringBuilder builder;
+builder.append("Hello"sv);
+builder.append(' ');
+builder.append("World"sv);
+
+auto result = MUST(builder.to_string()); // "Hello World"
+```
+
+## Smart Pointers
+
+### RefPtr & NonnullRefPtr
+
+Reference-counted smart pointers for heap-allocated objects.
+
+```cpp
+#include <AK/RefPtr.h>
+#include <AK/RefCounted.h>
+
+class MyObject : public RefCounted<MyObject> {
+public:
+    void do_something() { }
+};
+
+// NonnullRefPtr - cannot be null
+NonnullRefPtr<MyObject> obj = adopt_ref(*new MyObject());
+obj->do_something();
+
+// RefPtr - can be null
+RefPtr<MyObject> maybe_obj;
+if (maybe_obj)
+    maybe_obj->do_something();
+```
+
+<Accordion title="RefPtr vs NonnullRefPtr">
+- **NonnullRefPtr**: Guaranteed non-null, no overhead checking
+- **RefPtr**: Can be null, use when optional ownership needed
+- Both use reference counting for automatic memory management
+- Objects must inherit from `RefCounted<T>` or implement `ref()` and `unref()`
+</Accordion>
+
+### OwnPtr & NonnullOwnPtr
+
+Unique ownership smart pointers (like `std::unique_ptr`).
+
+```cpp
+#include <AK/OwnPtr.h>
+
+OwnPtr<MyObject> obj = make<MyObject>();
+obj->do_something();
+
+// Transfer ownership
+auto obj2 = move(obj); // obj is now null
+```
+
+## Error Handling
+
+### Error & ErrorOr
+
+Modern error handling without exceptions.
+
+```cpp
+#include <AK/Error.h>
+
+ErrorOr<int> divide(int a, int b) {
+    if (b == 0)
+        return Error::from_string_literal("Division by zero");
+    return a / b;
+}
+
+// Using TRY macro (returns on error)
+ErrorOr<void> example() {
+    auto result = TRY(divide(10, 2)); // result = 5
+    return {};
+}
+
+// Using MUST (asserts on error, use when error is impossible)
+auto result = MUST(divide(10, 2));
+```
+
+<CodeGroup>
+```cpp Error Creation
+// From errno
+auto err = Error::from_errno(ENOENT);
+
+// From string literal
+auto err = Error::from_string_literal("File not found");
+
+// From syscall
+auto err = Error::from_syscall("open"sv, -1);
+```
+
+```cpp ErrorOr Usage
+ErrorOr<String> read_file(StringView path) {
+    auto file = TRY(Core::File::open(path, Core::File::OpenMode::Read));
+    return TRY(file->read_until_eof());
+}
+
+// Caller handles error
+if (auto result = read_file("/etc/config"sv); result.is_error()) {
+    warnln("Error: {}", result.error());
+} else {
+    auto content = result.release_value();
+}
+```
+</CodeGroup>
+
+### Optional
+
+Type-safe nullable values.
+
+```cpp
+#include <AK/Optional.h>
+
+Optional<int> find_index(Vector<int> const& vec, int value) {
+    for (size_t i = 0; i < vec.size(); ++i) {
+        if (vec[i] == value)
+            return i;
+    }
+    return {}; // Empty optional
+}
+
+auto idx = find_index(numbers, 42);
+if (idx.has_value()) {
+    dbgln("Found at index {}", *idx);
+}
+```
+
+## Utilities
+
+### Span
+
+Non-owning view over contiguous memory.
+
+```cpp
+#include <AK/Span.h>
+
+void process_data(ReadonlyBytes data) {
+    for (u8 byte : data) {
+        // Process each byte
+    }
+}
+
+Vector<u8> buffer = { 1, 2, 3, 4 };
+process_data(buffer.span()); // Implicitly converts to Span
+```
+
+**Type Aliases:**
+- `Bytes` = `Span<u8>`
+- `ReadonlyBytes` = `Span<u8 const>`
+
+### Format
+
+Type-safe string formatting.
+
+```cpp
+#include <AK/Format.h>
+
+// Print to stdout
+outln("The answer is {}", 42);
+
+// Print to stderr  
+warnln("Warning: {} failed", operation);
+
+// Debug output (only in debug builds)
+dbgln("Debug: value = {}", value);
+
+// Format to string
+auto str = MUST(String::formatted("Hello {}", name));
+```
+
+### ByteBuffer
+
+Dynamic byte array.
+
+```cpp
+#include <AK/ByteBuffer.h>
+
+auto buffer = TRY(ByteBuffer::create_uninitialized(1024));
+// Use buffer.data() and buffer.size()
+
+auto copy = TRY(ByteBuffer::copy(data, size));
+```
+
+### Bitmap & BitmapView
+
+Efficient bit manipulation.
+
+```cpp
+#include <AK/Bitmap.h>
+
+Bitmap bitmap(64); // 64 bits
+bitmap.set(5, true);
+bitmap.set(10, true);
+
+if (bitmap.get(5)) {
+    // Bit 5 is set
+}
+```
+
+## Functional Programming
+
+### Function
+
+Type-safe function wrapper (like `std::function`).
+
+```cpp
+#include <AK/Function.h>
+
+Function<int(int, int)> add = [](int a, int b) { return a + b; };
+auto result = add(2, 3); // 5
+
+void execute(Function<void()> callback) {
+    callback();
+}
+```
+
+### Algorithms
+
+Functional-style algorithms.
+
+```cpp
+#include <AK/Find.h>
+#include <AK/AllOf.h>
+#include <AK/AnyOf.h>
+
+Vector<int> numbers = { 1, 2, 3, 4, 5 };
+
+// Find element
+if (auto it = find(numbers, 3); it != numbers.end()) {
+    // Found
+}
+
+// Check all elements
+if (all_of(numbers, [](int n) { return n > 0; })) {
+    // All positive
+}
+
+// Check any element  
+if (any_of(numbers, [](int n) { return n > 4; })) {
+    // At least one > 4
+}
+```
+
+## Memory & Performance
+
+### Traits
+
+Customize type behavior (hashing, comparison, etc.).
+
+```cpp
+#include <AK/Traits.h>
+
+template<>
+struct AK::Traits<MyType> {
+    static unsigned hash(MyType const& value) {
+        return /* hash implementation */;
+    }
+    static bool equals(MyType const& a, MyType const& b) {
+        return /* equality check */;
+    }
+};
+```
+
+### Atomic
+
+Atomic operations for lock-free programming.
+
+```cpp
+#include <AK/Atomic.h>
+
+Atomic<int> counter { 0 };
+counter.fetch_add(1); // Atomic increment
+
+auto value = counter.load(); // Atomic read
+counter.store(42); // Atomic write
+```
+
+## Best Practices
+
+<Accordion title="When to use each string type">
+- **String**: Owned, immutable strings. Use for storage and return values.
+- **StringView**: Non-owning views. Use for function parameters.
+- **StringBuilder**: Building strings incrementally. Use when concatenating.
+- **ByteString**: Deprecated, avoid in new code.
+</Accordion>
+
+<Accordion title="Smart pointer selection">
+- **NonnullRefPtr**: Shared ownership, cannot be null
+- **RefPtr**: Shared ownership, can be null
+- **NonnullOwnPtr**: Exclusive ownership, cannot be null  
+- **OwnPtr**: Exclusive ownership, can be null
+</Accordion>
+
+<Accordion title="Error handling patterns">
+```cpp
+// Use TRY in functions that return ErrorOr
+ErrorOr<void> my_function() {
+    auto result = TRY(fallible_operation());
+    return {};
+}
+
+// Use MUST when error is impossible
+auto str = MUST(String::from_utf8("valid UTF-8"sv));
+
+// Check errors explicitly when needed
+if (auto result = operation(); result.is_error()) {
+    handle_error(result.error());
+}
+```
+</Accordion>
+
+## Related APIs
+
+- [LibC](/api/libc) - POSIX C library integration
+- [LibCore](/api/libcore) - Core utilities built on AK
+- [Kernel API](/kernel/syscalls) - Kernel-safe AK subset

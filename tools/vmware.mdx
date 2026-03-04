@@ -1,0 +1,108 @@
+---
+title: Running in VMware
+description: Installation guide for running SerenityOS in VMware
+---
+
+<Warning>
+There are currently known issues with running Serenity in VMware. Please refer to the [open issue](https://github.com/SerenityOS/serenity/issues/5716) for a list of currently known problems. At the time of writing, audio and networking do not work in VMware.
+</Warning>
+
+## Creating the Disk Image
+
+Before creating a disk image for VMware, you need to create a GRUB image as described in the [bare metal installation guide](/tools/bare-metal).
+
+<Info>
+Skip the final step of the bare metal guide (writing to physical drive) as that's only relevant for real hardware.
+</Info>
+
+<Warning>
+You **cannot** use the same disk image created for QEMU. Using that image will halt immediately with the message `FATAL: No bootable medium found! System halted.`
+</Warning>
+
+### Converting the Image
+
+The easiest way to convert the disk image is with QEMU:
+
+```bash
+qemu-img convert -O vmdk /path/to/grub_disk_image /path/to/output/serenityos.vmdk
+```
+
+## Creating the Virtual Machine
+
+<Info>
+These instructions were written with VMware Player 15 in mind. Steps may not match exactly for past and future versions or VMware Workstation.
+</Info>
+
+<Steps>
+  <Step title="Create new virtual machine">
+    1. Open the **Create a New Virtual Machine** dialog
+    2. Select **I will install the operating system later**
+  </Step>
+  
+  <Step title="Choose guest operating system">
+    Choose **Other** as the guest operating system.
+  </Step>
+  
+  <Step title="Name and location">
+    Give the VM any name and store it anywhere you prefer.
+  </Step>
+  
+  <Step title="Specify disk capacity">
+    Choose any size for the hard disk. This disk will be removed in the next steps and replaced with the converted GRUB image.
+  </Step>
+  
+  <Step title="Finalize creation">
+    Select **Finish** to create the virtual machine.
+  </Step>
+</Steps>
+
+## Configuring the Virtual Machine
+
+<Steps>
+  <Step title="Open settings">
+    1. Select the newly created virtual machine
+    2. Click **Edit virtual machine settings**
+  </Step>
+  
+  <Step title="Set memory">
+    Serenity requires at minimum 512 MiB of memory. Set **Memory for this virtual machine** to 512 MiB or above. The currently recommended size is 1 GiB (1024 MiB).
+  </Step>
+  
+  <Step title="Remove existing hard disk">
+    1. Select the existing **Hard Disk**
+    2. Click **Remove**
+  </Step>
+  
+  <Step title="Add converted disk image">
+    1. Select **Add**
+    2. Select **Hard Disk**
+    3. Select **IDE (Recommended)**
+    4. Select **Use an existing virtual disk**
+    5. Click **Browse** and navigate to the converted VMDK disk image
+    6. Click **Finish**
+  </Step>
+  
+  <Step title="Save and power on">
+    1. Click **Save**
+    2. You can now **Power On** the virtual machine
+  </Step>
+</Steps>
+
+<Note>
+At the time of writing, audio and networking do not work in VMware.
+</Note>
+
+## That's It!
+
+You should now be able to boot SerenityOS in VMware. The system should boot from the GRUB bootloader and load into the SerenityOS environment.
+
+## Troubleshooting
+
+If you encounter issues during boot:
+
+1. Verify that you created the GRUB disk image (not the QEMU image)
+2. Ensure the VMDK conversion completed successfully
+3. Check that the IDE controller is properly configured
+4. Verify sufficient memory allocation (minimum 512 MiB)
+
+For more detailed troubleshooting, see the [troubleshooting documentation](https://github.com/SerenityOS/serenity/blob/master/Documentation/Troubleshooting.md).

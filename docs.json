@@ -1,122 +1,168 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "SerenityOS",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#cd2213",
+    "light": "#6c1e18",
+    "dark": "#161111"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/3006f941-d3d9-4c87-bb6f-ec29c8fc7c9a.png",
+  "logo": {
+    "light": "https://media.brand.dev/3006f941-d3d9-4c87-bb6f-ec29c8fc7c9a.png",
+    "dark": "https://media.brand.dev/3006f941-d3d9-4c87-bb6f-ec29c8fc7c9a.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/serenityOS/serenity"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/serenityOS/serenity"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "faq"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Building & Running",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "building/overview",
+              "building/linux",
+              "building/macos",
+              "building/windows",
+              "building/advanced",
+              "building/ladybird"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Architecture",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "architecture/overview",
+              "architecture/kernel",
+              "architecture/userland",
+              "architecture/libraries",
+              "architecture/ipc"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Development",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "development/contributing",
+              "development/coding-style",
+              "development/patterns",
+              "development/smart-pointers",
+              "development/testing"
+            ]
+          },
+          {
+            "group": "System Features",
+            "pages": [
+              "features/applications",
+              "features/services",
+              "features/browser",
+              "features/networking",
+              "features/filesystem"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Kernel",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "kernel/introduction",
+              "kernel/architecture"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Core Systems",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "kernel/memory-management",
+              "kernel/process-scheduling",
+              "kernel/interrupts",
+              "kernel/syscalls"
+            ]
+          },
+          {
+            "group": "Subsystems",
+            "pages": [
+              "kernel/filesystem",
+              "kernel/networking",
+              "kernel/graphics",
+              "kernel/devices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Tools",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "tools/ide-setup",
+              "tools/vscode",
+              "tools/clion",
+              "tools/vim-emacs"
+            ]
+          },
+          {
+            "group": "Debugging & Profiling",
+            "pages": [
+              "tools/debugging",
+              "tools/profiling",
+              "tools/troubleshooting"
+            ]
+          },
+          {
+            "group": "Virtualization",
+            "pages": [
+              "tools/qemu",
+              "tools/virtualbox",
+              "tools/vmware",
+              "tools/bare-metal"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Libraries",
+            "pages": [
+              "api/ak",
+              "api/libc",
+              "api/libcore",
+              "api/libgui"
+            ]
+          },
+          {
+            "group": "System Libraries",
+            "pages": [
+              "api/libgl",
+              "api/libaudio",
+              "api/libgfx",
+              "api/libweb"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

@@ -1,0 +1,566 @@
+---
+title: File System Support
+description: Virtual file system architecture with support for multiple file system types
+---
+
+SerenityOS features a flexible Virtual File System (VFS) architecture that supports multiple file system types, both traditional and special-purpose file systems.
+
+## Overview
+
+The kernel provides a unified VFS layer that allows different file system implementations to coexist and interact seamlessly. Applications access files through standard POSIX APIs regardless of the underlying file system type.
+
+<CardGroup cols={2}>
+  <Card title="VFS Layer" icon="layer-group">
+    Unified interface for all file systems
+  </Card>
+  <Card title="Multiple Types" icon="hard-drive">
+    Ext2, FAT, ISO9660, and more
+  </Card>
+  <Card title="Special FS" icon="folder-tree">
+    procfs, sysfs, devfs for system information
+  </Card>
+  <Card title="POSIX Compatible" icon="check">
+    Standard file operations and semantics
+  </Card>
+</CardGroup>
+
+## Supported File Systems
+
+### Ext2 File System
+
+The primary file system used by SerenityOS.
+
+<Accordion title="Ext2 Features">
+  **Capabilities:**
+  - Block-based storage
+  - Inode-based file representation
+  - Directory hierarchies
+  - Symbolic and hard links
+  - File permissions (Unix-style)
+  - Extended attributes
+  - File timestamps (atime, mtime, ctime)
+  - Large file support
+  
+  **Performance:**
+  - Block caching
+  - Read-ahead optimization
+  - Deferred writes
+  - Buffer cache management
+  
+  **Reliability:**
+  - Journaling support (planned)
+  - fsck utilities for repair
+  - Consistent metadata updates
+</Accordion>
+
+**Why Ext2?**
+- Well-documented specification
+- Proven track record
+- Simple and reliable
+- Good performance characteristics
+- Easy to implement correctly
+
+### FAT File System
+
+FAT16/FAT32 support for compatibility with other operating systems.
+
+<Accordion title="FAT Features">
+  **Supported Variants:**
+  - FAT12 (floppy disks)
+  - FAT16 (small partitions)
+  - FAT32 (large partitions)
+  
+  **Features:**
+  - Read and write support
+  - Long filename support (VFAT/LFN)
+  - Cross-platform compatibility
+  - USB drive access
+  - SD card support
+  
+  **Limitations:**
+  - No permissions or ownership
+  - Limited metadata
+  - Case-insensitive on some variants
+  - 4GB file size limit (FAT32)
+</Accordion>
+
+**Use Cases:**
+- USB flash drives
+- SD cards
+- Shared storage with other OSes
+- Boot partitions
+
+### ISO 9660 (CD-ROM)
+
+Read-only file system for CD/DVD media.
+
+**Features:**
+- ISO 9660 standard compliance
+- Rock Ridge extensions (Unix metadata)
+- Joliet extensions (long filenames)
+- El Torito bootable CD support
+- Multi-session support
+
+**Use Cases:**
+- Live CD/DVD boots
+- Software distribution
+- Archived data
+- Installation media
+
+### Plan9FS
+
+9P protocol file system for distributed computing.
+
+**Features:**
+- Network file system protocol
+- Resource sharing
+- Simple protocol design
+- Virtual file system interface
+
+**Use Cases:**
+- Remote file access
+- Distributed systems
+- Development and testing
+
+## Special File Systems
+
+SerenityOS provides several special-purpose file systems for system introspection and device access.
+
+### ProcFS (/proc)
+
+Process and system information file system.
+
+<Accordion title="ProcFS Structure">
+  **Per-Process Information:**
+  - `/proc/[pid]/cmdline` - Command line arguments
+  - `/proc/[pid]/exe` - Executable path
+  - `/proc/[pid]/cwd` - Current working directory
+  - `/proc/[pid]/fd/` - Open file descriptors
+  - `/proc/[pid]/vm` - Virtual memory layout
+  - `/proc/[pid]/unveil` - Unveiled paths
+  - `/proc/[pid]/pledge` - Pledged promises
+  - `/proc/[pid]/fds` - File descriptor information
+  - `/proc/[pid]/stacks` - Thread stack traces
+  - `/proc/[pid]/perf_events` - Performance counters
+  - `/proc/[pid]/children` - Child processes
+  
+  **System-Wide Information:**
+  - `/proc/cpuinfo` - CPU information
+  - `/proc/memstat` - Memory statistics
+  - `/proc/uptime` - System uptime
+  - `/proc/cmdline` - Kernel command line
+  - `/proc/modules` - Loaded kernel modules
+  - `/proc/net/` - Network statistics
+  - `/proc/sys/` - Kernel parameters
+  - `/proc/interrupts` - Interrupt counters
+  - `/proc/pci` - PCI devices
+  - `/proc/devices` - Device list
+</Accordion>
+
+**Use Cases:**
+- System monitoring tools (SystemMonitor)
+- Process management
+- Debugging and profiling
+- System information gathering
+
+### SysFS (/sys)
+
+Kernel and device tree information.
+
+<Accordion title="SysFS Structure">
+  **Device Information:**
+  - `/sys/bus/` - Bus types and devices
+  - `/sys/class/` - Device classes
+  - `/sys/devices/` - Device hierarchy
+  - `/sys/firmware/` - Firmware information
+  - `/sys/kernel/` - Kernel parameters
+  - `/sys/power/` - Power management
+  
+  **Hardware Discovery:**
+  - Device enumeration
+  - Driver binding information
+  - Hardware capabilities
+  - Device configuration
+</Accordion>
+
+**Use Cases:**
+- Hardware discovery
+- Device management
+- Kernel parameter tuning
+- Power management control
+
+### DevFS (/dev)
+
+Device file system for hardware access.
+
+<Accordion title="Device Types">
+  **Character Devices:**
+  - `/dev/null` - Null device
+  - `/dev/zero` - Zero device  
+  - `/dev/random` - Random number generator
+  - `/dev/urandom` - Non-blocking random
+  - `/dev/tty` - Controlling terminal
+  - `/dev/pts/*` - Pseudo-terminals
+  - `/dev/console` - System console
+  - `/dev/kbd` - Keyboard
+  - `/dev/mouse` - Mouse
+  - `/dev/audio` - Audio device
+  
+  **Block Devices:**
+  - `/dev/hd*` - Hard disks
+  - `/dev/sd*` - SCSI/SATA disks
+  - `/dev/loop*` - Loop devices
+  - `/dev/ramdisk*` - RAM disks
+  
+  **Special Devices:**
+  - `/dev/fb0` - Framebuffer
+  - `/dev/dsp` - Audio DSP
+  - `/dev/mixer` - Audio mixer
+  - `/dev/input/*` - Input devices
+</Accordion>
+
+### DevPtsFS (/dev/pts)
+
+Pseudo-terminal slave devices.
+
+**Features:**
+- Dynamic PTY allocation
+- Per-session isolation
+- Terminal emulation support
+- Job control support
+
+### TmpFS (/tmp)
+
+Temporary file storage in RAM.
+
+**Features:**
+- Memory-backed storage
+- Fast access speeds
+- Automatic cleanup on reboot
+- Configurable size limits
+- No disk I/O overhead
+
+**Use Cases:**
+- Temporary file storage
+- Cache files
+- Build artifacts
+- Socket files
+- Session data
+
+### RAMFS
+
+Simple RAM-based file system.
+
+**Features:**
+- Entirely in memory
+- No persistence
+- Fast operations
+- Dynamic sizing
+
+**Use Cases:**
+- Initial ramdisk (initrd)
+- Testing and development
+- Volatile storage needs
+
+### DevLoopFS
+
+Loop device file system for mounting files as block devices.
+
+**Features:**
+- Mount regular files as disks
+- Support for disk images
+- Transparent access
+- Multiple concurrent loop devices
+
+### FUSE (Filesystem in Userspace)
+
+Framework for user-space file system implementations.
+
+**Features:**
+- User-space file system development
+- No kernel module required
+- Easier debugging
+- Sandboxed operation
+
+## Virtual File System (VFS)
+
+The VFS layer provides a unified interface for all file system types.
+
+### VFS Components
+
+<CardGroup cols={2}>
+  <Card title="Inodes" icon="file">
+    File and directory representation
+  </Card>
+  <Card title="Dentries" icon="folder-tree">
+    Directory entry cache
+  </Card>
+  <Card title="File Objects" icon="folder-open">
+    Open file instances
+  </Card>
+  <Card title="Superblocks" icon="database">
+    File system metadata
+  </Card>
+</CardGroup>
+
+### VFS Operations
+
+**Inode Operations:**
+- File creation and deletion
+- Link and unlink
+- Rename operations
+- Permission changes
+- Attribute queries
+
+**File Operations:**
+- Open and close
+- Read and write
+- Seek operations
+- Memory mapping
+- I/O control (ioctl)
+
+**Directory Operations:**
+- Directory traversal
+- Entry lookup
+- Directory creation
+- Directory removal
+
+## File System Features
+
+### Permissions & Security
+
+**Unix Permissions:**
+- Owner, group, other permissions
+- Read, write, execute bits
+- Special bits (setuid, setgid, sticky)
+- Numeric (octal) and symbolic modes
+
+**Access Control:**
+- User and group ownership
+- Permission checking
+- Root privilege handling
+- File mode enforcement
+
+### File Attributes
+
+**Standard Attributes:**
+- File size
+- Timestamps (access, modification, change)
+- Owner and group IDs
+- Permission bits
+- File type
+- Link count
+
+**Extended Attributes:**
+- Arbitrary key-value metadata
+- Security labels
+- User-defined attributes
+
+### File Types
+
+- **Regular files** - Normal data files
+- **Directories** - File containers
+- **Symbolic links** - Name aliases
+- **Hard links** - Additional names
+- **Character devices** - Character I/O
+- **Block devices** - Block I/O
+- **FIFOs (named pipes)** - IPC mechanism
+- **Sockets** - Network/IPC endpoints
+
+## File System Operations
+
+### Mounting
+
+```bash
+# Mount a file system
+mount /dev/hda1 /mnt/data
+
+# Mount with options
+mount -o ro /dev/cdrom /mnt/cd
+
+# Mount by type
+mount -t ext2 /dev/sda2 /home
+
+# View mounted file systems
+mount
+```
+
+### Unmounting
+
+```bash
+# Unmount a file system
+umount /mnt/data
+
+# Force unmount
+umount -f /mnt/data
+
+# Lazy unmount
+umount -l /mnt/data
+```
+
+### File System Check
+
+```bash
+# Check Ext2 file system
+e2fsck /dev/hda1
+
+# Check and repair
+e2fsck -p /dev/hda1
+
+# Verbose check
+e2fsck -v /dev/hda1
+```
+
+## Caching & Performance
+
+### Buffer Cache
+
+The kernel maintains a buffer cache for improved I/O performance:
+
+**Features:**
+- Block-level caching
+- Write-back caching
+- Read-ahead optimization
+- LRU eviction policy
+- Dirty buffer tracking
+- Periodic sync to disk
+
+### Page Cache
+
+Memory-mapped file caching:
+
+- File content caching
+- Shared page mappings
+- Copy-on-write pages
+- Memory pressure handling
+- Demand paging
+
+### Inode Cache
+
+In-memory inode storage:
+
+- Active inode caching
+- Quick metadata access
+- Reduced disk reads
+- LRU-based eviction
+
+## File System Utilities
+
+Tools for managing file systems:
+
+**Creation:**
+- `mkfs.ext2` - Create Ext2 file system
+- `mke2fs` - Extended Ext2 creation
+
+**Checking:**
+- `fsck` - Generic file system check
+- `e2fsck` - Ext2-specific check
+
+**Information:**
+- `df` - Disk space usage
+- `du` - Directory space usage
+- `stat` - File status
+- `file` - File type detection
+
+**Management:**
+- `mount` / `umount` - Mount operations
+- `sync` - Flush caches to disk
+- `blockdev` - Block device control
+
+## POSIX Compatibility
+
+SerenityOS provides POSIX-compliant file operations:
+
+**System Calls:**
+- `open()`, `close()`
+- `read()`, `write()`
+- `lseek()`
+- `stat()`, `fstat()`, `lstat()`
+- `mkdir()`, `rmdir()`
+- `link()`, `unlink()`
+- `symlink()`, `readlink()`
+- `rename()`
+- `chmod()`, `chown()`
+- `truncate()`, `ftruncate()`
+- `mmap()`, `munmap()`
+
+**File Descriptors:**
+- Standard streams (stdin, stdout, stderr)
+- Descriptor inheritance
+- Close-on-exec flag
+- Non-blocking I/O
+- Asynchronous I/O (in development)
+
+## File Watching
+
+File system change notification:
+
+**Features:**
+- File modification watching
+- Directory content monitoring
+- Create/delete notifications
+- Attribute change events
+- Efficient event delivery
+
+**Use Cases:**
+- File manager updates
+- Build system triggers
+- Automatic reloading
+- Synchronization tools
+
+<Info>
+  File system notifications are implemented efficiently in the kernel and delivered to userspace applications via a special file descriptor interface.
+</Info>
+
+## Storage & Partitioning
+
+### Partition Support
+
+Support for various partition schemes:
+
+- **MBR (Master Boot Record)** - Traditional PC partitioning
+- **GPT (GUID Partition Table)** - Modern UEFI partitioning
+- Multiple partitions per disk
+- Extended partitions
+- Partition type detection
+
+### Disk Management
+
+**Tools:**
+- **PartitionEditor** - GUI partitioning tool
+- **fdisk** - Command-line partitioning
+- **blockdev** - Block device utilities
+
+**Features:**
+- Partition creation and deletion
+- Partition resizing
+- File system formatting
+- Disk information display
+
+## File Format Support
+
+SerenityOS can read and write numerous file formats:
+
+**Archives:**
+- TAR (Tape Archive)
+- ZIP compression
+- GZIP compression
+
+**Images:**
+- PNG, JPEG, GIF, BMP
+- QOI (Quite OK Image)
+- ICO (Windows Icon)
+- TGA (Targa)
+
+**Documents:**
+- PDF viewing
+- Markdown rendering
+- Plain text
+
+**Media:**
+- WAV, MP3, FLAC audio
+- Video formats (in development)
+
+<Info>
+  The file system architecture is designed to be extensible, allowing new file system types to be added easily through the VFS interface.
+</Info>

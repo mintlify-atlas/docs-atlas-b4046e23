@@ -1,0 +1,262 @@
+---
+title: Running in QEMU
+description: Run SerenityOS in QEMU virtual machine
+---
+
+QEMU is the default and recommended way to run SerenityOS. The build system includes automated QEMU support for easy testing and development.
+
+## Prerequisites
+
+### QEMU 6.2 or later
+
+Version 6.2 of QEMU is available in Ubuntu 22.04. On earlier versions of Ubuntu, you can build the recommended version of QEMU as provided by the toolchain.
+
+<Steps>
+  <Step title="Install QEMU dependencies">
+    Install the required development packages:
+    
+    ```bash
+    sudo apt install libgtk-3-dev libpixman-1-dev libsdl2-dev libslirp-dev libspice-server-dev
+    ```
+  </Step>
+  
+  <Step title="Build QEMU from toolchain">
+    If your distribution's QEMU version is older than 6.2:
+    
+    ```bash
+    Toolchain/BuildQemu.sh
+    ```
+  </Step>
+</Steps>
+
+## Running SerenityOS
+
+The simplest way to build and run SerenityOS in QEMU:
+
+```bash
+Meta/serenity.sh run
+```
+
+This command will:
+- Compile all of SerenityOS
+- Install built files into `Build/<architecture>/Root`
+- Build a disk image
+- Start SerenityOS using QEMU
+
+<Info>
+The chosen architecture defaults to your host architecture. Supported architectures are x86_64, aarch64, and riscv64.
+</Info>
+
+### First Build
+
+The first time you run the build command, it will:
+- Download required database files from the internet
+- Build the SerenityOS cross-compiler toolchain
+
+<Note>
+Subsequent builds will be much faster as these steps only need to be done once.
+</Note>
+
+### Default Credentials
+
+By default, the `anon` user account's password is: `foo`
+
+<Warning>
+The `anon` user can become `root` without a password by default as a development convenience. To prevent this, remove `anon` from the `wheel` group.
+</Warning>
+
+## Build Options
+
+### Selecting an Architecture
+
+Force a build for a specific architecture:
+
+```bash
+SERENITY_ARCH=aarch64 Meta/serenity.sh run
+```
+
+Supported values: `x86_64`, `aarch64`, `riscv64`
+
+### Build Only (No VM)
+
+To test compilation without running the VM:
+
+```bash
+Meta/serenity.sh build
+```
+
+### Kernel Command Line Parameters
+
+Pass additional kernel parameters:
+
+```bash
+Meta/serenity.sh run x86_64 smp=on
+```
+
+## QEMU Integration Features
+
+### SPICE Integration
+
+SPICE provides enhanced clipboard and display integration.
+
+<Steps>
+  <Step title="Build QEMU via toolchain">
+    ```bash
+    Toolchain/BuildQemu.sh
+    ```
+  </Step>
+  
+  <Step title="Install virt-viewer">
+    On Ubuntu 23.04+:
+    ```bash
+    sudo apt-get install virt-viewer
+    ```
+    
+    For earlier versions, you may need to build virt-viewer 8.0 from source.
+  </Step>
+  
+  <Step title="Enable SPICE and run">
+    ```bash
+    export SERENITY_SPICE=1
+    Meta/serenity.sh run
+    ```
+  </Step>
+</Steps>
+
+### File Transfer from QEMU
+
+#### Method 1: WebServer
+
+Serenity has a built-in web server accessible from your host:
+
+<Steps>
+  <Step title="Start WebServer in SerenityOS">
+    In the SerenityOS terminal:
+    ```console
+    ws .
+    ```
+  </Step>
+  
+  <Step title="Access from host browser">
+    Open `localhost:8000` in your host machine's browser.
+  </Step>
+</Steps>
+
+<Note>
+Some browsers download unrecognized files as plain text. Use `wget` to download files as-is instead.
+</Note>
+
+#### Method 2: Mount the Disk Image
+
+On *nix systems or inside WSL:
+
+```bash
+cd "Build/${SERENITY_ARCH}"
+mkdir mnt
+sudo mount -t ext2 _disk_image mnt
+```
+
+#### Method 3: Archiving Tool
+
+Some archiving tools like 7-Zip can directly open ext2 images like Serenity's `_disk_image`.
+
+<Info>
+For WSL users: Access the WSL drive in Windows Explorer via `\\wsl$\<distro name>\<path to serenity directory>`.
+</Info>
+
+#### Method 4: OpenSSH and SFTP
+
+<Steps>
+  <Step title="Setup OpenSSH server on host">
+    Configure OpenSSH server on your host system (Windows or Linux).
+  </Step>
+  
+  <Step title="Build OpenSSH port in SerenityOS">
+    ```bash
+    cd Ports/openssh
+    ./package.sh
+    cd ../..
+    Meta/serenity.sh run
+    ```
+  </Step>
+  
+  <Step title="Connect via SFTP">
+    From within SerenityOS:
+    ```console
+    sftp user@192.168.0.11
+    ```
+    
+    Use commands like `ls`, `cd`, `put [filename]`, `get [filename]`, and `quit`.
+  </Step>
+</Steps>
+
+## Debugging
+
+### GDB Remote Session
+
+Start SerenityOS with GDB attached:
+
+```bash
+Meta/serenity.sh gdb x86_64 smp=on -ex 'hb *init'
+```
+
+This runs the image in QEMU and attaches a GDB session, setting a breakpoint at the `init()` function in the Kernel.
+
+### Self-Test Mode
+
+Run the built image in self-test mode:
+
+```bash
+Meta/serenity.sh test
+```
+
+This passes `system_mode=self-test` to the Kernel.
+
+## Advanced Configuration
+
+### Custom QEMU Arguments
+
+Set additional QEMU arguments:
+
+```bash
+export SERENITY_EXTRA_QEMU_ARGS="-device virtio-serial"
+Meta/serenity.sh run
+```
+
+### Disk Image Types
+
+Build different disk image formats:
+
+```bash
+cd Build/x86_64
+ninja limine-image      # Builds limine_disk_image with Limine
+ninja grub-image        # Builds grub_disk_image with GRUB (BIOS)
+ninja grub-uefi-image   # Builds grub_uefi_disk_image with GRUB (UEFI)
+ninja extlinux-image    # Builds extlinux_disk_image with extlinux
+```
+
+## Troubleshooting
+
+### Toolchain Outdated
+
+If prompted to rebuild the toolchain after updates:
+
+```bash
+rm Build/*/CMakeCache.txt
+```
+
+### Filesystem Errors
+
+If you see `fusermount: failed to open /etc/mtab`:
+
+```bash
+ln -sv /proc/self/mounts /etc/mtab
+```
+
+### Performance on Windows
+
+<Warning>
+If using native Windows QEMU with WSL2, QEMU accesses the ext4 partition via 9P network share, which may be slower. Your WSL2 distro is accessible at `\\wsl$\{distro-name}`.
+</Warning>
+
+Consider copying `Build/_disk_image` and `Build/Kernel/Kernel` to a native Windows partition before running.

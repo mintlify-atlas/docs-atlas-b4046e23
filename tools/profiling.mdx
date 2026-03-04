@@ -1,0 +1,202 @@
+---
+title: Profiling SerenityOS
+description: Build and runtime profiling tools for performance analysis
+---
+
+SerenityOS provides multiple profiling approaches for analyzing both build performance and runtime behavior.
+
+## Build Profiling
+
+There are three ways to get information about compile times:
+
+1. Using `time ninja install` for overall timing
+2. Reading Ninja's log files for per-file compile times
+3. Enabling GCC/Clang flags for detailed compiler pass breakdowns
+
+### Ninja Log Analysis
+
+Ninja produces a log file with per-cpp-file compilation times, useful for identifying slow-to-compile files.
+
+#### Prerequisites
+
+- [ninjatracing](https://github.com/nico/ninjatracing/blob/master/ninjatracing) - Python script to convert Ninja logs
+- `python3` (the script expects `python` to be available)
+- Make `ninjatracing` executable and available in your PATH
+
+#### Usage
+
+<Accordion title="Generate build trace">
+**Step 1: Clean the build**
+
+Clean build artifacts and ccache to ensure every file is compiled:
+
+```bash
+ninja clean
+ccache --clear
+```
+
+**Step 2: Build with Ninja**
+
+```bash
+ninja
+```
+
+**Step 3: Convert log to JSON**
+
+The log is written to `.ninja_log` in the current directory:
+
+```bash
+ninjatracing .ninja_log > trace.json
+```
+
+**Step 4: Visualize**
+
+Drag and drop `trace.json` onto [Speedscope](https://www.speedscope.app/) or any compatible flamegraph visualizer.
+</Accordion>
+
+<Tip>
+Ninja trace analysis helps identify which files take the most time, making them good targets for optimization.
+</Tip>
+
+### Compiler Time Reports
+
+#### GCC -ftime-report
+
+Adding the `-ftime-report` flag to GCC outputs a breakdown for each compiled file.
+
+<Accordion title="Enable GCC time reporting">
+Edit `CMakeLists.txt` in the Serenity root directory and add around line 220:
+
+```cmake
+add_compile_options(-ftime-report)
+```
+
+Optionally add `-ftime-report-details` for more detail.
+</Accordion>
+
+<Accordion title="Example GCC output">
+```console
+Time variable                                   usr           sys          wall           GGC
+ phase setup                        :   0.00 (  0%)   0.00 (  0%)   0.01 (  0%)  1326k (  2%)
+ phase parsing                      :   0.57 ( 61%)   0.19 ( 83%)   1.63 ( 65%)    59M ( 74%)
+ phase lang. deferred               :   0.10 ( 11%)   0.03 ( 13%)   0.30 ( 12%)  8761k ( 11%)
+ phase opt and generate             :   0.23 ( 25%)   0.01 (  4%)   0.48 ( 19%)    10M ( 13%)
+ |name lookup                       :   0.11 ( 12%)   0.01 (  4%)   0.25 ( 10%)  2004k (  2%)
+ |overload resolution               :   0.08 (  9%)   0.00 (  0%)   0.26 ( 10%)  7900k ( 10%)
+ template instantiation             :   0.27 ( 29%)   0.08 ( 35%)   0.89 ( 36%)    25M ( 32%)
+ TOTAL                              :   0.93          0.23          2.50           79M
+```
+</Accordion>
+
+<Warning>
+Compiler time reports are most useful if you understand compiler internals. For general use, Ninja log analysis is recommended.
+</Warning>
+
+#### Clang -ftime-report
+
+Clang also supports `-ftime-report` flag with similar functionality.
+
+## Runtime Profiling
+
+SerenityOS includes a built-in profiler for analyzing application and system performance.
+
+### The profile Command
+
+The `profile` command records profiling information that can be viewed with ProfileViewer.
+
+#### Basic Usage
+
+<Accordion title="Profile a specific process">
+```bash
+# Profile a running process by PID
+profile -p 42
+
+# Profile a command
+profile echo "Hello friends!"
+```
+</Accordion>
+
+<Accordion title="System-wide profiling">
+```bash
+# Enable whole-system profiling (requires superuser)
+profile -ae
+
+# ...do work...
+
+# Stop profiling
+profile -ad
+```
+
+Results are saved to `/sys/kernel/profile`.
+</Accordion>
+
+<Accordion title="Event-specific profiling">
+Track specific event types with the `-t` flag:
+
+```bash
+# Profile syscalls
+profile -t syscall -- echo "Hello friends!"
+
+# Profile page faults
+profile -t page_fault -- ./my-app
+
+# Profile context switches
+profile -t context_switch -- ./my-app
+```
+
+Available event types:
+- `sample` - Sampling events
+- `context_switch` - Context switches
+- `page_fault` - Page faults
+- `syscall` - System calls
+- `read` - Read operations
+- `kmalloc` - Kernel memory allocations
+- `kfree` - Kernel memory frees
+</Accordion>
+
+#### Options
+
+| Option | Description |
+|--------|-------------|
+| `-p PID` | Target specific process ID |
+| `-a` | Profile all processes (super-user only) |
+| `-e` | Enable profiling |
+| `-d` | Disable profiling |
+| `-f` | Free the profiling buffer |
+| `-w` | Enable profiling and wait for user input to disable |
+| `-t event_type` | Track specific event type |
+
+### ProfileViewer
+
+ProfileViewer is a GUI application for viewing profiling data produced by `profile`.
+
+Launch it from the Applications menu or command line:
+
+```bash
+Profiler
+```
+
+It provides:
+- Flame graphs of execution time
+- Call tree analysis
+- Timeline views
+- Per-function statistics
+
+## Performance Tips
+
+<Tip>
+For accurate profiling results:
+- Use release builds (`-DCMAKE_BUILD_TYPE=Release`)
+- Disable debug macros that add logging overhead
+- Profile on real hardware when possible, as VM performance varies
+</Tip>
+
+<Tip>
+On Linux, QEMU is significantly faster with KVM. Ensure `/dev/kvm` exists and is readable/writable by your user.
+</Tip>
+
+## See Also
+
+- [Debugging](/tools/debugging) - Debugging tools and techniques
+- [Testing](/development/testing) - Running and debugging tests
+- [strace](help://man/1/strace) - System call tracer
